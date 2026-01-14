@@ -1,93 +1,85 @@
 -- Module: utils.lua
-local library = {
+-- Core utility functions and response libraries
+
+local M = {}
+
+-- Response libraries
+M.library = {
     greetings = {
         "Hey! Ready to build something cool?",
         "Howdy! Found any diamonds lately?",
-        "Yo! How’s your mining going?",
+        "Yo! How's your mining going?",
         "Hello there! Watch out for creepers!",
-        "Hi! What’s up in your world today?",
+        "Hi! What's up in your world today?",
         "Heya! Got any new builds to show?",
         "Sup! Found any hidden caves?",
-        "Hi there! Let’s dig some blocks!",
+        "Hi there! Let's dig some blocks!",
         "Hey friend! Time for adventure?",
-        "Yo! Ready to craft something amazing?",
-        "Greetings! How’s your redstone setup?",
-        "Hey! Any mobs giving you trouble?",
-        "Hi! Mining session today?",
-        "Hello! Got some diamonds to share?",
-        "Hey! Let’s explore the world together.",
-        "Yo! Found any rare ores yet?",
-        "Hiya! How’s your Minecraft day going?",
-        "Hey! Time to stock up on supplies?",
-        "Hello! Ready for some blocky fun?",
-        "Hey! Any creeper incidents lately?",
-        "Hi! Let’s organize your inventory.",
-        "Hey! Time for some mining action?",
-        "Yo! Building something epic today?",
-        "Hi there! Found any villages?",
-        "Greetings! Let’s check your farms.",
-        "Hey! Ready to venture into the Nether?",
-        "Hi! How’s your castle coming along?",
-        "Hello! Let’s explore some caves!",
-        "Hey! Mining efficiency tips, anyone?",
-        "Yo! Time for some crafting madness!"
+        "Yo! Ready to craft something amazing?"
     },
     replies = {
         "Nice one!",
         "That sounds fun!",
-        "Oh wow, I didn’t expect that.",
+        "Oh wow, I didn't expect that.",
         "Cool! Keep going.",
         "Haha, good idea!",
         "Awesome!",
         "Yup, I get it.",
         "Sweet!",
         "Interesting!",
-        "Alright, I’m following.",
         "Got it!",
-        "Exactly!",
         "Right on!",
-        "Haha, you got me there.",
         "Perfect!",
-        "Sure thing!",
-        "Absolutely!",
-        "No problem!",
-        "On it!",
-        "I see what you mean.",
-        "That’s clever!",
-        "Makes sense!",
-        "Good thinking!",
-        "Nice strategy!",
-        "I like that approach.",
-        "Hmm… intriguing.",
-        "Ah, I understand now.",
-        "You got this!",
-        "Keep it up!",
-        "Well done!"
+        "Makes sense!"
     },
     interjections = {
-        "Hmm…", "Oh!", "Ah, got it!", "Whoa!", "Yikes!", "Aha!", "Eek!", "Huh?", "Wow!", "Ooh!"
+        "Hmm…", "Oh!", "Ah, got it!", "Whoa!", "Yikes!", 
+        "Aha!", "Eek!", "Huh?", "Wow!", "Ooh!"
     },
     idioms = {
         "Don't put all your eggs in one chest.",
-        "That creeper really blew up your plans, huh?",
-        "I’ll dig through this problem like I dig stone.",
-        "Even the Ender Dragon can’t stop us!",
+        "Even the Ender Dragon can't stop us!",
         "Better safe than respawned!",
-        "You can’t mine it if you don’t swing.",
         "A redstone a day keeps the boredom away.",
-        "The early miner gets the diamonds.",
-        "Don’t count your chickens before they hatch in Minecraft.",
-        "Many blocks make light work."
+        "The early miner gets the diamonds."
     },
     jokes = {
         "Why did the skeleton go to the party alone? Because he had no body to go with!",
-        "I could tell you a block joke… but it might fall flat.",
-        "Why don’t zombies eat clowns? They taste funny!",
+        "Why don't zombies eat clowns? They taste funny!",
         "Why did the creeper cross the road? Boom!",
-        "Why do Endermen always look stressed? Too many blocks to move!",
         "What do you call a sheep that knows magic? A wool-izard!",
         "Why did the chicken join a Minecraft server? To lay some blocks!"
     }
 }
 
--- ===== HELPER FUNCTIONS =====
+-- Helper: choose random element from table
+function M.choose(tbl)
+    if not tbl or #tbl == 0 then return "" end
+    return tbl[math.random(#tbl)]
+end
+
+-- Helper: check if table contains value
+function M.tableContains(tbl, value)
+    for _, v in ipairs(tbl) do
+        if v == value then return true end
+    end
+    return false
+end
+
+-- Helper: normalize text
+function M.normalize(text)
+    return text:lower():gsub("%s+", " "):gsub("[^%w%s]", "")
+end
+
+-- Helper: extract keywords from text
+function M.extractKeywords(text)
+    local keywords = {}
+    for word in text:gmatch("%w+") do
+        if #word > 2 then  -- ignore very short words
+            table.insert(keywords, word:lower())
+        end
+    end
+    return keywords
+end
+
+return M
