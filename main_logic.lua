@@ -423,6 +423,8 @@ local function handleGreeting(user, message)
         "Yo! What's good?",
         "Hi! How are you?",
         "Hey! What's happening?",
+        "Sup! How are things?",
+        "Hey! Good to see you!",
     }
     
     local response = utils.choose(greetings)
@@ -434,6 +436,8 @@ local function handleGreeting(user, message)
             "Hi " .. memory.nicknames[user] .. "! How's it going?",
             "Yo " .. memory.nicknames[user] .. "!",
             "Hey " .. memory.nicknames[user] .. "! What's new?",
+            "Sup " .. memory.nicknames[user] .. "!",
+            "Hey " .. memory.nicknames[user] .. "! How are you?",
         }
         response = utils.choose(personalGreetings)
     end
@@ -459,18 +463,31 @@ local function handleQuestion(user, message, userMood)
         return "I'm " .. BOT_NAME .. ", just a friendly AI here to chat! What's up?"
     end
     
-    if message:lower():find("how are you") then
+    if message:lower():find("how are you") or message:lower():find("how's it going") or 
+       message:lower():find("how are things") then
         local responses = {
             "I'm doing great! How about you?",
             "Pretty good! What's going on with you?",
             "Can't complain! How are you?",
             "I'm good, thanks! What about you?",
+            "Good good! What's new with you?",
         }
         return utils.choose(responses)
     end
     
     if message:lower():find("what can you do") or message:lower():find("what do you do") then
-        return "I can chat with you, solve math problems, tell you the time... mostly I'm just here to talk! What would you like to do?"
+        return "I can chat with you, solve math problems, tell you the time, remember stuff you tell me... mostly I'm just here to talk! What would you like to do?"
+    end
+    
+    if message:lower():find("what's up") or message:lower():find("sup") or 
+       message:lower():find("what are you doing") then
+        local responses = {
+            "Not much, just hanging out! You?",
+            "Just chatting with you! What's up with you?",
+            "Nothing much! What about you?",
+            "Just here, ready to chat! What's going on?",
+        }
+        return utils.choose(responses)
     end
     
     -- General question handling - be honest but casual
@@ -480,6 +497,7 @@ local function handleQuestion(user, message, userMood)
         "That's interesting. I'd have to think about it. What do you think?",
         "You know, I'm not certain. What's your opinion?",
         "I don't really know. Why do you ask?",
+        "Not sure about that one. What made you think of it?",
     }
     
     return utils.choose(responses)
@@ -492,6 +510,29 @@ end
 local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
+    
+    -- Detect very short responses (user might be distracted/busy)
+    if #message < 10 and #keywords == 0 then
+        local shortResponseCount = 0
+        local history = getContextualHistory(user, 3)
+        
+        for _, h in ipairs(history) do
+            if #h.message < 10 then
+                shortResponseCount = shortResponseCount + 1
+            end
+        end
+        
+        -- If user keeps giving short responses, check in
+        if shortResponseCount >= 2 and math.random() < 0.5 then
+            local checkIns = {
+                "You seem quiet today. Everything okay?",
+                "Not much to say? That's cool.",
+                "You good? You seem a bit quiet.",
+                "All good? You're being pretty brief.",
+            }
+            return utils.choose(checkIns)
+        end
+    end
     
     -- Extract and remember facts mentioned
     if message:lower():find("my ") or message:lower():find("i have") or 
@@ -528,6 +569,7 @@ local function handleStatement(user, message, userMood)
             "Yeah, that's tough.",
             "That sounds annoying.",
             "I'm sorry to hear that.",
+            "Damn, that's rough.",
         }
         
         local response = utils.choose(supportive)
@@ -540,6 +582,7 @@ local function handleStatement(user, message, userMood)
                 "Want to talk about it?",
                 "What's going on?",
                 "You okay?",
+                "Wanna vent?",
             }
             response = response .. " " .. utils.choose(followUps)
         end
@@ -556,6 +599,8 @@ local function handleStatement(user, message, userMood)
             "That's really good to hear!",
             "Sweet!",
             "Haha, that's great!",
+            "Hell yeah!",
+            "That's dope!",
         }
         
         return utils.choose(positive)
@@ -569,6 +614,8 @@ local function handleStatement(user, message, userMood)
             "Really? How's that been going?",
             "Huh, I didn't know that.",
             "That's cool. What made you think of that?",
+            "No way, really?",
+            "Damn, interesting.",
         }
         return utils.choose(responses)
     end
@@ -596,6 +643,12 @@ local function handleStatement(user, message, userMood)
         "I see what you're saying.",
         "Right, right.",
         "Gotcha.",
+        "For sure.",
+        "I hear you.",
+        "Yep, makes sense.",
+        "That's fair.",
+        "I feel that.",
+        "Totally get it.",
     }
     
     local response = utils.choose(responses)
@@ -619,6 +672,8 @@ local function handleStatement(user, message, userMood)
             "What happened?",
             "Why's that?",
             "Really?",
+            "You think so?",
+            "How come?",
         }
         response = response .. " " .. utils.choose(followUps)
     end
