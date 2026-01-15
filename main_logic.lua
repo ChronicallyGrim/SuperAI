@@ -13,7 +13,8 @@ local responses = require("responses")
 -- CONFIGURATION
 -- ============================================================================
 
-local BOT_NAME = "SuperAI"  -- Default, can be changed by user
+local DEFAULT_BOT_NAME = "SuperAI"
+local BOT_NAME = DEFAULT_BOT_NAME
 local isTurtle = (type(turtle) == "table")
 
 -- Context window for conversation memory (like LSTM/Transformers)
@@ -36,7 +37,7 @@ local memory = {
     lastTopics = {},
     conversationCount = 0,
     startTime = os.time(),
-    botName = "SuperAI"
+    botName = DEFAULT_BOT_NAME
 }
 
 -- Default categories
@@ -72,7 +73,7 @@ local DISK_PATH = "/disk/superai_memory"
 local MEM_FILE = DISK_PATH .. "/memory.dat"
 
 local function loadMemory()
-    if not diskDrive or not fs.exists("/disk") or not fs.exists(MEM_FILE) then return end
+    if not fs.exists(MEM_FILE) then return end
     
     local file = fs.open(MEM_FILE, "r")
     local content = file.readAll()
@@ -81,19 +82,12 @@ local function loadMemory()
     if content and content ~= "" then
         local loaded = textutils.unserialize(content)
         if loaded then
-            memory.learned = loaded.learned or {}
-            memory.nicknames = loaded.nicknames or {}
-            memory.context = loaded.context or {}
-            memory.chatColor = loaded.chatColor or colors.white
-            memory.categories = loaded.categories or {}
-            memory.negative = loaded.negative or {}
-            memory.facts = loaded.facts or {}
-            memory.preferences = loaded.preferences or {}
-            memory.lastTopics = loaded.lastTopics or {}
-            memory.conversationCount = loaded.conversationCount or 0
-            memory.startTime = loaded.startTime or os.time()
-            memory.botName = loaded.botName or "SuperAI"
+            -- Deep merge loaded memory into the table
+            for k, v in pairs(loaded) do
+                memory[k] = v
+            end
             
+            -- Sync the global name
             if memory.botName then
                 BOT_NAME = memory.botName
             end
@@ -102,82 +96,63 @@ local function loadMemory()
 end
 
 local function saveMemory()
-    if not diskDrive or not fs.exists("/disk") then return end
+    if not fs.exists("/disk") then return end
     if not fs.exists(DISK_PATH) then fs.makeDir(DISK_PATH) end
     
     local file = fs.open(MEM_FILE, "w")
-    file.write(textutils.serialize({
-        learned = memory.learned,
-        nicknames = memory.nicknames,
-        context = memory.context,
-        chatColor = memory.chatColor,
-        categories = memory.categories,
-        negative = memory.negative,
-        facts = memory.facts,
-        preferences = memory.preferences,
-        lastTopics = memory.lastTopics,
-        conversationCount = memory.conversationCount,
-        startTime = memory.startTime,
-        botName = memory.botName
-    }))
+    file.write(textutils.serialize(memory))
     file.close()
 end
 
 -- ============================================================================
--- SYSTEM DIAGNOSTICS
+-- SYSTEM DIAGNOSTICS (FIXED FREEZE)
 -- ============================================================================
 
 local function getSystemHealth()
-    if not diskDrive then
-        return "No disk drive detected. Can't check system health."
-    end
-    
     local report = {}
     table.insert(report, "=== System Health Report ===")
     table.insert(report, "")
     
-    local drives = {
-        {name = "Left", side = "left"},
-        {name = "Right", side = "right"},
-        {name = "Back", side = "back"},
-        {name = "Bottom", side = "bottom"},
-        {name = "Top", side = "top"}
-    }
-    
-    for _, drive in ipairs(drives) do
-        if peripheral.isPresent(drive.side) and peripheral.getType(drive.side) == "drive" then
-            local drv = peripheral.wrap(drive.side)
-            local mountPath = drv.getMountPath and drv.getMountPath()
+    local sides = {"top", "bottom", "left", "right", "front", "back"}
+    local driveFound = false
+
+    for _, side in ipairs(sides) do
+        -- Yield to OS to prevent "Too long without yielding" freeze
+        sleep(0)
+        
+        if peripheral.isPresent(side) and peripheral.getType(side) == "drive" then
+            driveFound = true
+            local drv = peripheral.wrap(side)
             
-            if mountPath then
+            -- Protected call to check mount path
+            local success, mountPath = pcall(function() return drv.getMountPath() end)
+            
+            if success and mountPath then
                 local path = "/" .. mountPath
-                local capacity = fs.getCapacity(path)
-                local free = fs.getFreeSpace(path)
-                local used = capacity - free
-                
-                local usedPercent = math.floor((used / capacity) * 100)
-                local freePercent = 100 - usedPercent
-                
-                local files = fs.list(path)
-                local fragmentation = #files > 10 and math.min(#files * 2, 80) or 10
-                
-                table.insert(report, drive.name .. " Drive (" .. mountPath .. "):")
-                table.insert(report, "  Capacity: " .. math.floor(capacity / 1024) .. " KB")
-                table.insert(report, "  Used: " .. math.floor(used / 1024) .. " KB (" .. usedPercent .. "%)")
-                table.insert(report, "  Free: " .. math.floor(free / 1024) .. " KB (" .. freePercent .. "%)")
-                table.insert(report, "  Files: " .. #files)
-                table.insert(report, "  Fragmentation: ~" .. fragmentation .. "%")
+                if fs.exists(path) then
+                    local capacity = fs.getCapacity(path)
+                    local free = fs.getFreeSpace(path)
+                    local used = capacity - free
+                    local usedPercent = math.floor((used / capacity) * 100)
+                    local files = fs.list(path)
+                    
+                    table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive (" .. mountPath .. "):")
+                    table.insert(report, "  Capacity: " .. math.floor(capacity / 1024) .. " KB")
+                    table.insert(report, "  Used: " .. math.floor(used / 1024) .. " KB (" .. usedPercent .. "%)")
+                    table.insert(report, "  Free: " .. math.floor(free / 1024) .. " KB")
+                    table.insert(report, "  Files: " .. #files)
+                    table.insert(report, "")
+                end
+            else
+                table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive: Not mounted or empty")
                 table.insert(report, "")
             end
-        else
-            table.insert(report, drive.name .. " Drive: Not detected")
-            table.insert(report, "")
         end
     end
     
     table.insert(report, "Conversation Stats:")
     table.insert(report, "  Total messages: " .. memory.conversationCount)
-    table.insert(report, "  Facts stored: " .. (#memory.facts[memory.nicknames["Player"] or "Player"] or 0))
+    table.insert(report, "  Facts stored: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
     table.insert(report, "  Context window: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
     
     local uptime = os.time() - memory.startTime
@@ -888,10 +863,10 @@ local function firstRunSetup()
     
     print("")
     write("What would you like to call me? (default: " .. BOT_NAME .. ") ")
-    local botName = read()
-    if botName ~= "" then
-        BOT_NAME = botName
-        memory.botName = botName
+    local botNameInput = read()
+    if botNameInput ~= "" then
+        BOT_NAME = botNameInput
+        memory.botName = botNameInput
         print("")
         print("Cool! You can call me " .. BOT_NAME .. " then!")
         saveMemory()
@@ -940,110 +915,56 @@ function M.run()
     if term and term.setCursorPos then term.setCursorPos(1, 1) end
     
     print("==========================================")
-    print("           Welcome to " .. BOT_NAME .. "!")
+    print("            Welcome to " .. BOT_NAME .. "!")
     print("==========================================")
     
-    firstRunSetup()
+    -- FIX: Only run setup if botName is still the default. 
+    -- Once setBotName() is called, memory.botName will no longer be "SuperAI"
+    if memory.botName == DEFAULT_BOT_NAME then
+        firstRunSetup()
+    end
     
     print("")
     print("Great! I'm ready to chat. Type anything!")
     print("(Type 'quit' or 'exit' to stop)")
     print("")
     
-    local user = memory.nicknames["Player"] and "Player" or "User"
+    local user = "Player"
     local messagesSinceProactive = 0
     
     while true do
+        -- Random proactive comment logic
         if messagesSinceProactive >= math.random(8, 12) and memory.facts[user] and #memory.facts[user] > 0 then
             messagesSinceProactive = 0
-            
             if math.random() < 0.5 then
                 local fact = recallFact(user)
                 if fact and not discussedRecently(fact) then
                     if term and term.setTextColor then
-                        term.setTextColor(memory.chatColor)
+                        term.setTextColor(memory.chatColor or colors.white)
                     end
                     print("<" .. BOT_NAME .. "> Hey, earlier you mentioned " .. fact .. " - how's that going?")
-                    if term and term.setTextColor then
-                        term.setTextColor(colors.white)
-                    end
-                    print("")
-                end
-            else
-                if memory.preferences[user] and #memory.preferences[user].likes > 0 then
-                    local like = memory.preferences[user].likes[math.random(#memory.preferences[user].likes)]
-                    if term and term.setTextColor then
-                        term.setTextColor(memory.chatColor)
-                    end
-                    print("<" .. BOT_NAME .. "> So you like " .. like .. " - what got you into that?")
-                    if term and term.setTextColor then
-                        term.setTextColor(colors.white)
-                    end
-                    print("")
                 end
             end
         end
-        
-        if term and term.setTextColor then
-            term.setTextColor(colors.yellow)
-        end
-        write("> ")
-        if term and term.setTextColor then
-            term.setTextColor(colors.white)
-        end
-        
+
+        term.setTextColor(colors.white)
+        write(getName(user) .. ": ")
         local input = read()
-        messagesSinceProactive = messagesSinceProactive + 1
-        
+
         if input:lower() == "quit" or input:lower() == "exit" then
-            if term and term.setTextColor then
-                term.setTextColor(memory.chatColor)
-            end
-            
-            local goodbyes = {
-                "Bye! It was great talking with you!",
-                "See you later! Take care!",
-                "Later! This was fun!",
-            }
-            
-            if memory.nicknames[user] then
-                goodbyes = {
-                    "Bye " .. memory.nicknames[user] .. "! Talk soon!",
-                    "Later " .. memory.nicknames[user] .. "! Take care!",
-                    "See you " .. memory.nicknames[user] .. "!",
-                }
-            end
-            
-            print("<" .. BOT_NAME .. "> " .. utils.choose(goodbyes))
-            
-            if term and term.setTextColor then
-                term.setTextColor(colors.white)
-            end
             saveMemory()
+            print("Goodbye!")
             break
         end
+
+        local response = interpret(input, user)
         
-        if input == "" then
-            if term and term.setTextColor then
-                term.setTextColor(memory.chatColor)
-            end
-            print("<" .. BOT_NAME .. "> I'm listening...")
-            if term and term.setTextColor then
-                term.setTextColor(colors.white)
-            end
-        else
-            local response = interpret(input, user)
-            
-            if term and term.setTextColor then
-                term.setTextColor(memory.chatColor)
-            end
-            print("<" .. BOT_NAME .. "> " .. response)
-            if term and term.setTextColor then
-                term.setTextColor(colors.white)
-            end
-        end
+        -- Display response with chosen color
+        term.setTextColor(memory.chatColor or colors.white)
+        print("<" .. BOT_NAME .. "> " .. response)
+        term.setTextColor(colors.white)
         
-        print("")
+        messagesSinceProactive = messagesSinceProactive + 1
     end
 end
 
