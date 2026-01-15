@@ -43,7 +43,7 @@ local memory = {
 -- Default categories
 local defaultCategories = {
     greeting = {"hi", "hello", "hey", "greetings", "sup", "yo"},
-    math = {"calculate", "what is", "%d+%s*[%+%-%*/%%%^]%s*%d+"},
+    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided"},
     time = {"time", "clock", "what time"},
     gratitude = {"thanks", "thank you"},
     personal = {"i feel", "i'm feeling", "my"},
@@ -318,36 +318,48 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- MATH EVALUATION
+-- IMPROVED MATH EVALUATION
 -- ============================================================================
 
 local function evaluateMath(message)
-    local expr = message:match("(%d+%s*[%+%-%*/%%%^]%s*%d+)")
-    if expr then
-        local func, err = load("return " .. expr)
+    -- Normalize the message for math
+    local expr = message:lower()
+    
+    -- Convert word-based operators to symbols
+    expr = expr:gsub("plus", "+")
+    expr = expr:gsub("minus", "-")
+    expr = expr:gsub("times", "*")
+    expr = expr:gsub("multiplied by", "*")
+    expr = expr:gsub("divided by", "/")
+    expr = expr:gsub("to the power of", "^")
+    
+    -- Extract only valid math characters: numbers, operators, dots, and parentheses
+    local cleanExpr = ""
+    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)]+") do
+        cleanExpr = cleanExpr .. token
+    end
+
+    -- Basic check to see if we actually have numbers and operators
+    if cleanExpr ~= "" and cleanExpr:match("%d") and cleanExpr:match("[%+%-%*/%%%^]") then
+        -- Use a sandboxed-style approach with a limited environment for safety
+        local func, err = load("return " .. cleanExpr, "math_eval", "t", {math = math})
         if func then
             local success, result = pcall(func)
-            if success then
-                return "The answer is " .. tostring(result)
+            if success and type(result) == "number" then
+                -- Formatting large or decimal numbers nicely
+                local output = tostring(result)
+                if output:find("%.") and #output > 6 then
+                    output = string.format("%.4f", result):gsub("0+$", ""):gsub("%.$", "")
+                end
+                return "The answer is " .. output
             end
         end
     end
     
-    local patterns = {
-        {"(%d+)%s+plus%s+(%d+)", function(a,b) return a+b end},
-        {"(%d+)%s+minus%s+(%d+)", function(a,b) return a-b end},
-        {"(%d+)%s+times%s+(%d+)", function(a,b) return a*b end},
-        {"(%d+)%s+divided%s+by%s+(%d+)", function(a,b) return a/b end},
-    }
-    
-    for _, pattern in ipairs(patterns) do
-        local a, b = message:lower():match(pattern[1])
-        if a and b then
-            local result = pattern[2](tonumber(a), tonumber(b))
-            return "That's " .. tostring(result)
-        end
-    end
-    
+    -- Fallback for simple "What is 5?" style questions
+    local singleNum = message:match("what is (%d+)")
+    if singleNum then return "That's just " .. singleNum .. "!" end
+
     return nil
 end
 
@@ -367,7 +379,7 @@ local function detectIntent(message)
     
     local intents = {
         math = {
-            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve"},
+            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "multiplied"},
             weight = 2.0
         },
         time = {
@@ -732,7 +744,7 @@ local function interpret(message, user)
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
-            response = "I couldn't solve that. Try something like '5 + 3' or 'what is 10 times 4'."
+            response = "I couldn't solve that. Try something like '5 + 3' or 'what is (10 * 2) + 5'."
         end
         
     elseif intent == "time" then
