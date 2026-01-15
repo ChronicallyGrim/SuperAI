@@ -16,6 +16,10 @@ local responses = require("responses")
 local BOT_NAME = "SuperAI"
 local isTurtle = (type(turtle) == "table")
 
+-- Context window for conversation memory (like LSTM/Transformers)
+local CONTEXT_WINDOW = 15
+local INTENT_CONFIDENCE_THRESHOLD = 0.6
+
 -- ============================================================================
 -- MEMORY SYSTEM
 -- ============================================================================
@@ -212,12 +216,65 @@ local function updateContext(user, message, category, response)
         message = message,
         category = category,
         response = response,
-        timestamp = os.time()
+        timestamp = os.time(),
+        embedding = utils.extractKeywords(message)  -- Simplified "embedding"
     })
     
-    if #memory.context > 10 then
+    -- LSTM-like: Keep sliding window of context
+    if #memory.context > CONTEXT_WINDOW then
         table.remove(memory.context, 1)
     end
+end
+
+-- Sequence-to-Sequence concept: Map input sequence to output
+local function getContextualHistory(user, lookback)
+    lookback = lookback or 5
+    local history = {}
+    local count = 0
+    
+    for i = #memory.context, 1, -1 do
+        if memory.context[i].user == user then
+            table.insert(history, 1, memory.context[i])
+            count = count + 1
+            if count >= lookback then break end
+        end
+    end
+    
+    return history
+end
+
+-- Transformer-like: Attention mechanism - find relevant past context
+local function findRelevantContext(currentMessage, user)
+    local currentKeywords = utils.extractKeywords(currentMessage)
+    local relevantContexts = {}
+    
+    for i = #memory.context, math.max(1, #memory.context - 10), -1 do
+        if memory.context[i].user == user then
+            local contextKeywords = memory.context[i].embedding or {}
+            local relevanceScore = 0
+            
+            -- Calculate relevance (attention score)
+            for _, currKw in ipairs(currentKeywords) do
+                for _, ctxKw in ipairs(contextKeywords) do
+                    if currKw == ctxKw then
+                        relevanceScore = relevanceScore + 1
+                    end
+                end
+            end
+            
+            if relevanceScore > 0 then
+                table.insert(relevantContexts, {
+                    context = memory.context[i],
+                    score = relevanceScore
+                })
+            end
+        end
+    end
+    
+    -- Sort by relevance score
+    table.sort(relevantContexts, function(a, b) return a.score > b.score end)
+    
+    return relevantContexts
 end
 
 -- ============================================================================
@@ -256,73 +313,102 @@ local function evaluateMath(message)
 end
 
 -- ============================================================================
--- INTENT DETECTION
+-- INTENT DETECTION (Naive Bayes inspired with confidence scores)
 -- ============================================================================
 
 local function detectIntent(message)
     local msg = message:lower()
+    local intentScores = {}
     
-    -- Math
-    if msg:find("%d") and (msg:find("[%+%-%*/]") or msg:find("plus") or msg:find("minus") or 
-       msg:find("times") or msg:find("divided") or msg:find("calculate")) then
-        return "math"
-    end
+    -- Score each intent (Naive Bayes concept)
+    local intents = {
+        math = {
+            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve"},
+            weight = 2.0
+        },
+        time = {
+            patterns = {"time", "clock", "what time", "when is it"},
+            weight = 1.5
+        },
+        remember = {
+            patterns = {"remember", "don't forget", "keep in mind", "note that"},
+            weight = 1.8
+        },
+        recall = {
+            patterns = {"what did i", "did i tell", "do you remember", "what was", "recall"},
+            weight = 1.6
+        },
+        preference_like = {
+            patterns = {"i like", "i love", "i enjoy", "i prefer"},
+            weight = 1.7
+        },
+        preference_dislike = {
+            patterns = {"i hate", "i don't like", "i dislike", "can't stand"},
+            weight = 1.7
+        },
+        change_settings = {
+            patterns = {"change my", "change color", "change name", "update"},
+            weight = 1.4
+        },
+        greeting = {
+            patterns = {"^hi+$", "^hello", "^hey+", "^sup", "^yo+", "^howdy"},
+            weight = 2.0
+        },
+        gratitude = {
+            patterns = {"thank", "thanks", "thx", "appreciate"},
+            weight = 1.5
+        },
+        question = {
+            patterns = {"?", "^what", "^why", "^how", "^when", "^where", "^who"},
+            weight = 1.2
+        }
+    }
     
-    -- Time
-    if msg:find("time") or msg:find("clock") then
-        return "time"
-    end
-    
-    -- Remember facts
-    if msg:match("remember") or msg:match("don't forget") or msg:match("keep in mind") then
-        return "remember"
-    end
-    
-    -- Recall information
-    if msg:match("what did i") or msg:match("did i tell") or msg:match("do you remember") then
-        return "recall"
-    end
-    
-    -- Preferences (likes/dislikes)
-    if msg:match("i like") or msg:match("i love") then
-        return "like", msg:match("i like (.+)") or msg:match("i love (.+)")
-    end
-    if msg:match("i hate") or msg:match("i don't like") or msg:match("i dislike") then
-        return "dislike", msg:match("i hate (.+)") or msg:match("i don't like (.+)") or msg:match("i dislike (.+)")
-    end
-    
-    -- Change settings
-    if msg:match("change") and (msg:match("color") or msg:match("name")) then
-        if msg:match("color") then
-            return "change_color"
-        elseif msg:match("name") or msg:match("nickname") then
-            return "change_name"
+    -- Calculate scores for each intent
+    for intentName, intentData in pairs(intents) do
+        intentScores[intentName] = 0
+        for _, pattern in ipairs(intentData.patterns) do
+            if msg:find(pattern) then
+                intentScores[intentName] = intentScores[intentName] + intentData.weight
+            end
         end
     end
     
-    -- Greeting
-    if msg:match("^hi+$") or msg:match("^hello") or msg:match("^hey+") or 
-       msg:match("^sup") or msg:match("^yo+") then
-        return "greeting"
+    -- Find highest scoring intent (with confidence)
+    local bestIntent = "statement"
+    local bestScore = 0
+    
+    for intentName, score in pairs(intentScores) do
+        if score > bestScore then
+            bestScore = score
+            bestIntent = intentName
+        end
     end
     
-    -- Gratitude
-    if msg:find("thank") or msg:find("thanks") then
-        return "gratitude"
+    -- Calculate confidence (normalized)
+    local totalScore = 0
+    for _, score in pairs(intentScores) do
+        totalScore = totalScore + score
     end
     
-    -- Nickname request
-    if msg:match("call me%s+(.+)") then
-        return "nickname", msg:match("call me%s+(.+)")
+    local confidence = totalScore > 0 and (bestScore / totalScore) or 0
+    
+    -- Extract entities for certain intents
+    local entity = nil
+    if bestIntent == "preference_like" then
+        entity = msg:match("i like (.+)") or msg:match("i love (.+)") or msg:match("i enjoy (.+)")
+    elseif bestIntent == "preference_dislike" then
+        entity = msg:match("i hate (.+)") or msg:match("i don't like (.+)") or msg:match("i dislike (.+)")
+    elseif bestIntent == "remember" then
+        entity = msg:match("remember%s+(.+)") or msg:match("don't forget%s+(.+)")
     end
     
-    -- Question
-    if msg:find("?") or msg:match("^what") or msg:match("^why") or 
-       msg:match("^how") or msg:match("^when") or msg:match("^where") then
-        return "question"
+    -- Return best intent only if confidence is high enough
+    if confidence >= INTENT_CONFIDENCE_THRESHOLD then
+        return bestIntent, entity, confidence
+    else
+        return "statement", nil, confidence
     end
-    
-    return "statement"
 end
 
 -- ============================================================================
@@ -399,6 +485,10 @@ local function handleQuestion(user, message, userMood)
     return utils.choose(responses)
 end
 
+-- ============================================================================
+-- RESPONSE GENERATION (Seq2Seq + Context-aware generation)
+-- ============================================================================
+
 local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
@@ -414,6 +504,21 @@ local function handleStatement(user, message, userMood)
         trackTopic(keywords[1])
     end
     
+    -- Use attention mechanism to find relevant past context
+    local relevantPast = findRelevantContext(message, user)
+    
+    -- If we have highly relevant past context, reference it
+    if relevantPast and #relevantPast > 0 and relevantPast[1].score >= 2 then
+        local pastMsg = relevantPast[1].context.message
+        if not discussedRecently(pastMsg) and math.random() < 0.3 then
+            return "Oh, that reminds me - you mentioned something similar before. " .. utils.choose({
+                "What happened with that?",
+                "How'd that turn out?",
+                "Is that still going on?",
+            })
+        end
+    end
+    
     -- For negative moods, be supportive but natural
     if userMood == "negative" then
         local supportive = {
@@ -427,8 +532,9 @@ local function handleStatement(user, message, userMood)
         
         local response = utils.choose(supportive)
         
-        -- Maybe ask what's up
-        if math.random() < 0.4 then
+        -- Use conversation history to provide better follow-up
+        local history = getContextualHistory(user, 3)
+        if #history > 0 and math.random() < 0.4 then
             local followUps = {
                 "What happened?",
                 "Want to talk about it?",
@@ -467,7 +573,7 @@ local function handleStatement(user, message, userMood)
         return utils.choose(responses)
     end
     
-    -- Sometimes reference something they told us before
+    -- Sometimes reference something they told us before (Information Retrieval)
     if math.random() < 0.15 and memory.facts[user] and #memory.facts[user] > 0 then
         local oldFact = recallFact(user)
         if oldFact and not discussedRecently(oldFact) then
@@ -480,7 +586,7 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    -- General conversation - be natural
+    -- General conversation - be natural (with context awareness)
     local responses = {
         "Yeah, totally.",
         "I get what you mean.",
@@ -494,8 +600,19 @@ local function handleStatement(user, message, userMood)
     
     local response = utils.choose(responses)
     
-    -- Sometimes add a follow-up question (not too often)
-    if personality.shouldAskQuestion() and math.random() < 0.3 then
+    -- Use RNN-like memory: Consider conversation flow
+    local history = getContextualHistory(user, 3)
+    local questionStreak = 0
+    for _, h in ipairs(history) do
+        if h.response and h.response:find("?") then
+            questionStreak = questionStreak + 1
+        end
+    end
+    
+    -- Don't ask too many questions in a row (dialogue management)
+    local shouldAskQuestion = personality.shouldAskQuestion() and questionStreak < 2 and math.random() < 0.3
+    
+    if shouldAskQuestion then
         local followUps = {
             "What do you think?",
             "How'd that go?",
@@ -510,23 +627,27 @@ local function handleStatement(user, message, userMood)
 end
 
 -- ============================================================================
--- MAIN INTERPRETATION
+-- MAIN INTERPRETATION (with NLP pipeline)
 -- ============================================================================
 
 local function interpret(message, user)
     memory.conversationCount = memory.conversationCount + 1
     
-    -- Update mood
+    -- STEP 1: Input Processing (NLP) - Understand words and extract intent
     mood.update(user, message)
     local userMood = mood.get(user)
     
-    -- Detect intent
-    local intent, extra = detectIntent(message)
+    -- STEP 2: Intent Classification (Naive Bayes + SVM concepts)
+    local intent, entity, confidence = detectIntent(message)
     local category = detectCategory(message)
+    
+    -- STEP 3: Context Management (LSTM/Transformer concept) - Recall previous turns
+    local conversationHistory = getContextualHistory(user, 5)
+    local relevantContext = findRelevantContext(message, user)
     
     local response
     
-    -- Handle specific intents
+    -- STEP 4: Information Retrieval/Generation - Access memory or generate response
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
@@ -537,18 +658,15 @@ local function interpret(message, user)
         response = "It's Minecraft time: " .. tostring(os.time()) .. "."
         
     elseif intent == "remember" then
-        -- Extract what to remember
-        local toRemember = message:match("remember%s+(.+)") or 
-                          message:match("don't forget%s+(.+)") or
-                          message:match("keep in mind%s+(.+)")
-        if toRemember then
-            rememberFact(user, toRemember)
+        if entity then
+            rememberFact(user, entity)
             response = "Got it, I'll remember that!"
         else
             response = "What should I remember?"
         end
         
     elseif intent == "recall" then
+        -- Information Retrieval from memory
         local fact = recallFact(user)
         if fact then
             response = "Yeah, you told me: " .. fact
@@ -556,57 +674,58 @@ local function interpret(message, user)
             response = "Hmm, I don't think you've told me about that yet."
         end
         
-    elseif intent == "like" then
-        if extra then
-            rememberPreference(user, extra, true)
-            response = "Cool! I'll remember you like " .. extra .. "."
+    elseif intent == "preference_like" then
+        if entity then
+            rememberPreference(user, entity, true)
+            response = "Cool! I'll remember you like " .. entity .. "."
         end
         
-    elseif intent == "dislike" then
-        if extra then
-            rememberPreference(user, extra, false)
-            response = "Got it, I'll remember you don't like " .. extra .. "."
+    elseif intent == "preference_dislike" then
+        if entity then
+            rememberPreference(user, entity, false)
+            response = "Got it, I'll remember you don't like " .. entity .. "."
         end
         
-    elseif intent == "change_color" then
-        -- Show color picker
-        print("")
-        print("Pick a new chat color:")
-        local chatColors = {
-            {name = "white", code = colors.white},
-            {name = "orange", code = colors.orange},
-            {name = "magenta", code = colors.magenta},
-            {name = "light blue", code = colors.lightBlue},
-            {name = "yellow", code = colors.yellow},
-            {name = "lime", code = colors.lime},
-            {name = "pink", code = colors.pink},
-            {name = "cyan", code = colors.cyan},
-            {name = "purple", code = colors.purple},
-            {name = "blue", code = colors.blue},
-        }
-        
-        for i, v in ipairs(chatColors) do
-            print(i .. ") " .. v.name)
-        end
-        
-        write("Pick a number: ")
-        local choice = tonumber(read())
-        
-        if choice and chatColors[choice] then
-            memory.chatColor = chatColors[choice].code
-            saveMemory()
-            response = "Changed to " .. chatColors[choice].name .. "!"
+    elseif intent == "change_settings" then
+        if message:lower():find("color") then
+            -- Show color picker
+            print("")
+            print("Pick a new chat color:")
+            local chatColors = {
+                {name = "white", code = colors.white},
+                {name = "orange", code = colors.orange},
+                {name = "magenta", code = colors.magenta},
+                {name = "light blue", code = colors.lightBlue},
+                {name = "yellow", code = colors.yellow},
+                {name = "lime", code = colors.lime},
+                {name = "pink", code = colors.pink},
+                {name = "cyan", code = colors.cyan},
+                {name = "purple", code = colors.purple},
+                {name = "blue", code = colors.blue},
+            }
+            
+            for i, v in ipairs(chatColors) do
+                print(i .. ") " .. v.name)
+            end
+            
+            write("Pick a number: ")
+            local choice = tonumber(read())
+            
+            if choice and chatColors[choice] then
+                memory.chatColor = chatColors[choice].code
+                saveMemory()
+                response = "Changed to " .. chatColors[choice].name .. "!"
+            else
+                response = "Invalid choice. Keeping current color."
+            end
         else
-            response = "Invalid choice. Keeping current color."
-        end
-        
-    elseif intent == "change_name" then
-        write("What should I call you? ")
-        local newName = read()
-        if newName ~= "" then
-            response = setNickname(user, newName)
-        else
-            response = "Okay, I'll keep calling you " .. getName(user) .. "."
+            write("What should I call you? ")
+            local newName = read()
+            if newName ~= "" then
+                response = setNickname(user, newName)
+            else
+                response = "Okay, I'll keep calling you " .. getName(user) .. "."
+            end
         end
         
     elseif intent == "greeting" then
@@ -616,23 +735,21 @@ local function interpret(message, user)
         response = handleGratitude(user, message)
         personality.evolve("positive", {messageType = "general"})
         
-    elseif intent == "nickname" then
-        response = setNickname(user, extra)
-        
     elseif intent == "question" then
         response = handleQuestion(user, message, userMood)
         
     else
+        -- STEP 5: Response Generation (Seq2Seq) - Formulate natural answer
         response = handleStatement(user, message, userMood)
     end
     
-    -- Adjust for mood
+    -- Apply mood adjustment (sentiment aware)
     response = mood.adjustResponse(user, response)
     
-    -- Store in context
+    -- Store in context (like RNN/LSTM memory)
     updateContext(user, message, category, response)
     
-    -- Save periodically
+    -- Periodic save
     if memory.conversationCount % 5 == 0 then
         saveMemory()
     end
