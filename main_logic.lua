@@ -318,7 +318,7 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- IMPROVED MATH EVALUATION (ADVANCED)
+-- IMPROVED MATH EVALUATION (FIXED FOR TRIG & PARENTHESES)
 -- ============================================================================
 
 local function evaluateMath(message)
@@ -336,7 +336,14 @@ local function evaluateMath(message)
     -- Mapping common math functions to math library
     local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
     for _, f in ipairs(functions) do
-        expr = expr:gsub(f .. "%s*%(", "math." .. f .. "(")
+        -- Handle functions with and without parentheses, ensuring math.rad for trig
+        if f == "sin" or f == "cos" or f == "tan" then
+            expr = expr:gsub(f .. "%s*%(([%d%.]+)%)", "math." .. f .. "(math.rad(%1))")
+            expr = expr:gsub(f .. "%s+([%d%.]+)", "math." .. f .. "(math.rad(%1))")
+        else
+            expr = expr:gsub(f .. "%s*%(([%d%.]+)%)", "math." .. f .. "(%1)")
+            expr = expr:gsub(f .. "%s+([%d%.]+)", "math." .. f .. "(%1)")
+        end
     end
 
     -- Clean everything except numbers, symbols, and math library calls
@@ -745,7 +752,7 @@ local function interpret(message, user)
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
-            response = "I couldn't solve that. Try something like '5 + 3' or 'sqrt(16)'."
+            response = "I couldn't solve that. Try something like '5 + 3' or 'sqrt 16'."
         end
         
     elseif intent == "time" then
@@ -971,7 +978,6 @@ function M.run()
         
         term.setTextColor(memory.chatColor or colors.white)
         print("<" .. BOT_NAME .. "> " .. response)
-        term.setTextColor(colors.white)
         
         messagesSinceProactive = messagesSinceProactive + 1
     end
