@@ -13,7 +13,7 @@ local responses = require("responses")
 -- CONFIGURATION
 -- ============================================================================
 
-local BOT_NAME = "SuperAI"
+local BOT_NAME = "SuperAI"  -- Default, can be changed by user
 local isTurtle = (type(turtle) == "table")
 
 -- Context window for conversation memory (like LSTM/Transformers)
@@ -35,7 +35,8 @@ local memory = {
     preferences = {},     -- User preferences and likes/dislikes
     lastTopics = {},      -- Recent conversation topics
     conversationCount = 0,
-    startTime = os.time()
+    startTime = os.time(),
+    botName = "SuperAI"   -- Customizable bot name
 }
 
 -- Default categories
@@ -91,6 +92,12 @@ local function loadMemory()
             memory.lastTopics = loaded.lastTopics or {}
             memory.conversationCount = loaded.conversationCount or 0
             memory.startTime = loaded.startTime or os.time()
+            memory.botName = loaded.botName or "SuperAI"
+            
+            -- Update global BOT_NAME
+            if memory.botName then
+                BOT_NAME = memory.botName
+            end
         end
     end
 end
@@ -111,9 +118,76 @@ local function saveMemory()
         preferences = memory.preferences,
         lastTopics = memory.lastTopics,
         conversationCount = memory.conversationCount,
-        startTime = memory.startTime
+        startTime = memory.startTime,
+        botName = memory.botName
     }))
     file.close()
+end
+
+-- ============================================================================
+-- SYSTEM DIAGNOSTICS
+-- ============================================================================
+
+local function getSystemHealth()
+    if not diskDrive then
+        return "No disk drive detected. Can't check system health."
+    end
+    
+    local report = {}
+    table.insert(report, "=== System Health Report ===")
+    table.insert(report, "")
+    
+    -- Check each drive
+    local drives = {
+        {name = "Left", side = "left"},
+        {name = "Right", side = "right"},
+        {name = "Back", side = "back"},
+        {name = "Bottom", side = "bottom"},
+        {name = "Top", side = "top"}
+    }
+    
+    for _, drive in ipairs(drives) do
+        if peripheral.isPresent(drive.side) and peripheral.getType(drive.side) == "drive" then
+            local drv = peripheral.wrap(drive.side)
+            local mountPath = drv.getMountPath and drv.getMountPath()
+            
+            if mountPath then
+                local path = "/" .. mountPath
+                local capacity = fs.getCapacity(path)
+                local free = fs.getFreeSpace(path)
+                local used = capacity - free
+                
+                local usedPercent = math.floor((used / capacity) * 100)
+                local freePercent = 100 - usedPercent
+                
+                -- Estimate fragmentation (simplified)
+                local files = fs.list(path)
+                local fragmentation = #files > 10 and math.min(#files * 2, 80) or 10
+                
+                table.insert(report, drive.name .. " Drive (" .. mountPath .. "):")
+                table.insert(report, "  Capacity: " .. math.floor(capacity / 1024) .. " KB")
+                table.insert(report, "  Used: " .. math.floor(used / 1024) .. " KB (" .. usedPercent .. "%)")
+                table.insert(report, "  Free: " .. math.floor(free / 1024) .. " KB (" .. freePercent .. "%)")
+                table.insert(report, "  Files: " .. #files)
+                table.insert(report, "  Fragmentation: ~" .. fragmentation .. "%")
+                table.insert(report, "")
+            end
+        else
+            table.insert(report, drive.name .. " Drive: Not detected")
+            table.insert(report, "")
+        end
+    end
+    
+    -- Memory stats
+    table.insert(report, "Conversation Stats:")
+    table.insert(report, "  Total messages: " .. memory.conversationCount)
+    table.insert(report, "  Facts stored: " .. (#memory.facts[memory.nicknames["Player"] or "Player"] or 0))
+    table.insert(report, "  Context window: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
+    
+    local uptime = os.time() - memory.startTime
+    table.insert(report, "  Uptime: " .. math.floor(uptime / 60) .. " hours")
+    
+    return table.concat(report, "\n")
 end
 
 -- ============================================================================
@@ -128,6 +202,13 @@ local function setNickname(user, nickname)
     memory.nicknames[user] = nickname
     saveMemory()
     return "Got it! I'll call you " .. nickname .. " from now on."
+end
+
+local function setBotName(newName)
+    BOT_NAME = newName
+    memory.botName = newName
+    saveMemory()
+    return "Cool! You can call me " .. newName .. " now."
 end
 
 -- Remember facts about the user
@@ -347,7 +428,7 @@ local function detectIntent(message)
             weight = 1.7
         },
         change_settings = {
-            patterns = {"change my", "change color", "change name", "update"},
+            patterns = {"change my", "change color", "change name", "update", "call you"},
             weight = 1.4
         },
         greeting = {
@@ -458,9 +539,20 @@ local function handleGratitude(user, message)
 end
 
 local function handleQuestion(user, message, userMood)
+    -- System health check
+    if message:lower():find("system health") or message:lower():find("system status") or
+       message:lower():find("diagnostics") or message:lower():find("storage") then
+        return getSystemHealth()
+    end
+    
     -- Check for specific answerable questions
     if message:lower():find("who are you") or message:lower():find("what are you") then
         return "I'm " .. BOT_NAME .. ", just a friendly AI here to chat! What's up?"
+    end
+    
+    if message:lower():find("your name") or message:lower():find("what's your name") or
+       message:lower():find("whats your name") then
+        return "I'm " .. BOT_NAME .. "! What about you?"
     end
     
     if message:lower():find("how are you") or message:lower():find("how's it going") or 
@@ -610,12 +702,15 @@ local function handleStatement(user, message, userMood)
     if category == "personal" then
         local responses = {
             "Oh yeah? Tell me more.",
-            "Interesting. What's that like?",
-            "Really? How's that been going?",
-            "Huh, I didn't know that.",
+            "What's that like?",
+            "Really? How's that been?",
+            "Huh, didn't know that.",
             "That's cool. What made you think of that?",
             "No way, really?",
             "Damn, interesting.",
+            "Oh cool, how'd that happen?",
+            "Nice! What's the story there?",
+            "For real? What's up with that?",
         }
         return utils.choose(responses)
     end
@@ -772,6 +867,14 @@ local function interpret(message, user)
                 response = "Changed to " .. chatColors[choice].name .. "!"
             else
                 response = "Invalid choice. Keeping current color."
+            end
+        elseif message:lower():find("call you") or message:lower():find("your name") then
+            write("What should I call myself? ")
+            local newName = read()
+            if newName ~= "" then
+                response = setBotName(newName)
+            else
+                response = "Okay, I'll keep my name as " .. BOT_NAME .. "."
             end
         else
             write("What should I call you? ")
