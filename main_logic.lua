@@ -26,7 +26,12 @@ local memory = {
     learned = {},
     chatColor = colors.white,
     categories = {},
-    negative = {}
+    negative = {},
+    facts = {},           -- Remember facts user tells us
+    preferences = {},     -- User preferences and likes/dislikes
+    lastTopics = {},      -- Recent conversation topics
+    conversationCount = 0,
+    startTime = os.time()
 }
 
 -- Default categories
@@ -77,6 +82,11 @@ local function loadMemory()
             memory.chatColor = loaded.chatColor or colors.white
             memory.categories = loaded.categories or {}
             memory.negative = loaded.negative or {}
+            memory.facts = loaded.facts or {}
+            memory.preferences = loaded.preferences or {}
+            memory.lastTopics = loaded.lastTopics or {}
+            memory.conversationCount = loaded.conversationCount or 0
+            memory.startTime = loaded.startTime or os.time()
         end
     end
 end
@@ -92,7 +102,12 @@ local function saveMemory()
         context = memory.context,
         chatColor = memory.chatColor,
         categories = memory.categories,
-        negative = memory.negative
+        negative = memory.negative,
+        facts = memory.facts,
+        preferences = memory.preferences,
+        lastTopics = memory.lastTopics,
+        conversationCount = memory.conversationCount,
+        startTime = memory.startTime
     }))
     file.close()
 end
@@ -109,6 +124,68 @@ local function setNickname(user, nickname)
     memory.nicknames[user] = nickname
     saveMemory()
     return "Got it! I'll call you " .. nickname .. " from now on."
+end
+
+-- Remember facts about the user
+local function rememberFact(user, fact)
+    if not memory.facts[user] then
+        memory.facts[user] = {}
+    end
+    table.insert(memory.facts[user], {
+        fact = fact,
+        timestamp = os.time()
+    })
+    -- Keep last 20 facts
+    while #memory.facts[user] > 20 do
+        table.remove(memory.facts[user], 1)
+    end
+    saveMemory()
+end
+
+-- Remember user preferences (likes/dislikes)
+local function rememberPreference(user, item, isLike)
+    if not memory.preferences[user] then
+        memory.preferences[user] = {likes = {}, dislikes = {}}
+    end
+    
+    if isLike then
+        table.insert(memory.preferences[user].likes, item)
+    else
+        table.insert(memory.preferences[user].dislikes, item)
+    end
+    
+    saveMemory()
+end
+
+-- Get a random fact about the user
+local function recallFact(user)
+    if not memory.facts[user] or #memory.facts[user] == 0 then
+        return nil
+    end
+    local fact = memory.facts[user][math.random(#memory.facts[user])]
+    return fact.fact
+end
+
+-- Track conversation topics
+local function trackTopic(topic)
+    table.insert(memory.lastTopics, {
+        topic = topic,
+        timestamp = os.time()
+    })
+    -- Keep last 10 topics
+    while #memory.lastTopics > 10 do
+        table.remove(memory.lastTopics, 1)
+    end
+end
+
+-- Check if we discussed this recently
+local function discussedRecently(topic)
+    for i = #memory.lastTopics, math.max(1, #memory.lastTopics - 3), -1 do
+        if memory.lastTopics[i].topic:lower():find(topic:lower()) then
+            return true
+        end
+    end
+    return false
 end
 
 local function detectCategory(message)
@@ -194,6 +271,33 @@ local function detectIntent(message)
     -- Time
     if msg:find("time") or msg:find("clock") then
         return "time"
+    end
+    
+    -- Remember facts
+    if msg:match("remember") or msg:match("don't forget") or msg:match("keep in mind") then
+        return "remember"
+    end
+    
+    -- Recall information
+    if msg:match("what did i") or msg:match("did i tell") or msg:match("do you remember") then
+        return "recall"
+    end
+    
+    -- Preferences (likes/dislikes)
+    if msg:match("i like") or msg:match("i love") then
+        return "like", msg:match("i like (.+)") or msg:match("i love (.+)")
+    end
+    if msg:match("i hate") or msg:match("i don't like") or msg:match("i dislike") then
+        return "dislike", msg:match("i hate (.+)") or msg:match("i don't like (.+)") or msg:match("i dislike (.+)")
+    end
+    
+    -- Change settings
+    if msg:match("change") and (msg:match("color") or msg:match("name")) then
+        if msg:match("color") then
+            return "change_color"
+        elseif msg:match("name") or msg:match("nickname") then
+            return "change_name"
+        end
     end
     
     -- Greeting
@@ -299,6 +403,17 @@ local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
     
+    -- Extract and remember facts mentioned
+    if message:lower():find("my ") or message:lower():find("i have") or 
+       message:lower():find("i work") or message:lower():find("i live") then
+        rememberFact(user, message)
+    end
+    
+    -- Track topics
+    if keywords and #keywords > 0 then
+        trackTopic(keywords[1])
+    end
+    
     -- For negative moods, be supportive but natural
     if userMood == "negative" then
         local supportive = {
@@ -352,6 +467,19 @@ local function handleStatement(user, message, userMood)
         return utils.choose(responses)
     end
     
+    -- Sometimes reference something they told us before
+    if math.random() < 0.15 and memory.facts[user] and #memory.facts[user] > 0 then
+        local oldFact = recallFact(user)
+        if oldFact and not discussedRecently(oldFact) then
+            local callbacks = {
+                "Oh, that reminds me - you mentioned " .. oldFact .. " before.",
+                "Speaking of which, earlier you told me " .. oldFact .. ".",
+                "By the way, about that thing with " .. oldFact .. "...",
+            }
+            return utils.choose(callbacks)
+        end
+    end
+    
     -- General conversation - be natural
     local responses = {
         "Yeah, totally.",
@@ -386,6 +514,8 @@ end
 -- ============================================================================
 
 local function interpret(message, user)
+    memory.conversationCount = memory.conversationCount + 1
+    
     -- Update mood
     mood.update(user, message)
     local userMood = mood.get(user)
@@ -405,6 +535,79 @@ local function interpret(message, user)
         
     elseif intent == "time" then
         response = "It's Minecraft time: " .. tostring(os.time()) .. "."
+        
+    elseif intent == "remember" then
+        -- Extract what to remember
+        local toRemember = message:match("remember%s+(.+)") or 
+                          message:match("don't forget%s+(.+)") or
+                          message:match("keep in mind%s+(.+)")
+        if toRemember then
+            rememberFact(user, toRemember)
+            response = "Got it, I'll remember that!"
+        else
+            response = "What should I remember?"
+        end
+        
+    elseif intent == "recall" then
+        local fact = recallFact(user)
+        if fact then
+            response = "Yeah, you told me: " .. fact
+        else
+            response = "Hmm, I don't think you've told me about that yet."
+        end
+        
+    elseif intent == "like" then
+        if extra then
+            rememberPreference(user, extra, true)
+            response = "Cool! I'll remember you like " .. extra .. "."
+        end
+        
+    elseif intent == "dislike" then
+        if extra then
+            rememberPreference(user, extra, false)
+            response = "Got it, I'll remember you don't like " .. extra .. "."
+        end
+        
+    elseif intent == "change_color" then
+        -- Show color picker
+        print("")
+        print("Pick a new chat color:")
+        local chatColors = {
+            {name = "white", code = colors.white},
+            {name = "orange", code = colors.orange},
+            {name = "magenta", code = colors.magenta},
+            {name = "light blue", code = colors.lightBlue},
+            {name = "yellow", code = colors.yellow},
+            {name = "lime", code = colors.lime},
+            {name = "pink", code = colors.pink},
+            {name = "cyan", code = colors.cyan},
+            {name = "purple", code = colors.purple},
+            {name = "blue", code = colors.blue},
+        }
+        
+        for i, v in ipairs(chatColors) do
+            print(i .. ") " .. v.name)
+        end
+        
+        write("Pick a number: ")
+        local choice = tonumber(read())
+        
+        if choice and chatColors[choice] then
+            memory.chatColor = chatColors[choice].code
+            saveMemory()
+            response = "Changed to " .. chatColors[choice].name .. "!"
+        else
+            response = "Invalid choice. Keeping current color."
+        end
+        
+    elseif intent == "change_name" then
+        write("What should I call you? ")
+        local newName = read()
+        if newName ~= "" then
+            response = setNickname(user, newName)
+        else
+            response = "Okay, I'll keep calling you " .. getName(user) .. "."
+        end
         
     elseif intent == "greeting" then
         response = handleGreeting(user, message)
@@ -428,6 +631,11 @@ local function interpret(message, user)
     
     -- Store in context
     updateContext(user, message, category, response)
+    
+    -- Save periodically
+    if memory.conversationCount % 5 == 0 then
+        saveMemory()
+    end
     
     return response
 end
@@ -512,9 +720,43 @@ function M.run()
     print("")
     
     local user = memory.nicknames["Player"] and "Player" or "User"
+    local messagesSinceProactive = 0
     
     -- Main conversation loop
     while true do
+        -- Occasionally be proactive (every 8-12 messages)
+        if messagesSinceProactive >= math.random(8, 12) and memory.facts[user] and #memory.facts[user] > 0 then
+            messagesSinceProactive = 0
+            
+            -- Bring up something they mentioned before
+            if math.random() < 0.5 then
+                local fact = recallFact(user)
+                if fact and not discussedRecently(fact) then
+                    if term and term.setTextColor then
+                        term.setTextColor(memory.chatColor)
+                    end
+                    print("<" .. BOT_NAME .. "> Hey, earlier you mentioned " .. fact .. " - how's that going?")
+                    if term and term.setTextColor then
+                        term.setTextColor(colors.white)
+                    end
+                    print("")
+                end
+            else
+                -- Ask about their preferences
+                if memory.preferences[user] and #memory.preferences[user].likes > 0 then
+                    local like = memory.preferences[user].likes[math.random(#memory.preferences[user].likes)]
+                    if term and term.setTextColor then
+                        term.setTextColor(memory.chatColor)
+                    end
+                    print("<" .. BOT_NAME .. "> So you like " .. like .. " - what got you into that?")
+                    if term and term.setTextColor then
+                        term.setTextColor(colors.white)
+                    end
+                    print("")
+                end
+            end
+        end
+        
         -- Show prompt with chat color
         if term and term.setTextColor then
             term.setTextColor(colors.yellow)
@@ -525,16 +767,35 @@ function M.run()
         end
         
         local input = read()
+        messagesSinceProactive = messagesSinceProactive + 1
         
         -- Check for exit
         if input:lower() == "quit" or input:lower() == "exit" then
             if term and term.setTextColor then
                 term.setTextColor(memory.chatColor)
             end
-            print("<" .. BOT_NAME .. "> Bye! It was great talking with you!")
+            
+            -- Personalized goodbye
+            local goodbyes = {
+                "Bye! It was great talking with you!",
+                "See you later! Take care!",
+                "Later! This was fun!",
+            }
+            
+            if memory.nicknames[user] then
+                goodbyes = {
+                    "Bye " .. memory.nicknames[user] .. "! Talk soon!",
+                    "Later " .. memory.nicknames[user] .. "! Take care!",
+                    "See you " .. memory.nicknames[user] .. "!",
+                }
+            end
+            
+            print("<" .. BOT_NAME .. "> " .. utils.choose(goodbyes))
+            
             if term and term.setTextColor then
                 term.setTextColor(colors.white)
             end
+            saveMemory()
             break
         end
         
