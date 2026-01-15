@@ -43,7 +43,7 @@ local memory = {
 -- Default categories
 local defaultCategories = {
     greeting = {"hi", "hello", "hey", "greetings", "sup", "yo"},
-    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided", "sqrt", "sin", "cos"},
+    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided", "sqrt", "sin", "cos", "tan"},
     time = {"time", "clock", "what time"},
     gratitude = {"thanks", "thank you"},
     personal = {"i feel", "i'm feeling", "my"},
@@ -318,13 +318,12 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- IMPROVED MATH EVALUATION (FIXED FOR TRIG & PARENTHESES)
+-- IMPROVED MATH EVALUATION (SURGICAL FIX APPLIED)
 -- ============================================================================
 
 local function evaluateMath(message)
     local expr = message:lower()
     
-    -- Replace text-based functions/operators with Lua-compliant strings
     expr = expr:gsub("plus", "+")
     expr = expr:gsub("minus", "-")
     expr = expr:gsub("times", "*")
@@ -333,10 +332,8 @@ local function evaluateMath(message)
     expr = expr:gsub("to the power of", "^")
     expr = expr:gsub("squared", "^2")
     
-    -- Mapping common math functions to math library
     local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
     for _, f in ipairs(functions) do
-        -- Handle functions with and without parentheses, ensuring math.rad for trig
         if f == "sin" or f == "cos" or f == "tan" then
             expr = expr:gsub(f .. "%s*%(([%d%.]+)%)", "math." .. f .. "(math.rad(%1))")
             expr = expr:gsub(f .. "%s+([%d%.]+)", "math." .. f .. "(math.rad(%1))")
@@ -346,19 +343,17 @@ local function evaluateMath(message)
         end
     end
 
-    -- Clean everything except numbers, symbols, and math library calls
     local cleanExpr = ""
-    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)math%s]+") do
+    -- Pattern updated to allow 'mathrad' keywords
+    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathrad%s]+") do
         cleanExpr = cleanExpr .. token
     end
 
     if cleanExpr ~= "" and cleanExpr:match("%d") then
-        -- Execute in a safe environment containing the math table
         local func, err = load("return " .. cleanExpr, "math_env", "t", {math = math})
         if func then
             local success, result = pcall(func)
             if success and type(result) == "number" then
-                -- Handle formatting
                 local output = tostring(result)
                 if result % 1 ~= 0 then 
                     output = string.format("%.4f", result):gsub("0+$", ""):gsub("%.$", "")
@@ -372,7 +367,7 @@ local function evaluateMath(message)
 end
 
 -- ============================================================================
--- INTENT DETECTION
+-- INTENT DETECTION (SURGICAL FIX APPLIED)
 -- ============================================================================
 
 local function detectIntent(message)
@@ -387,7 +382,7 @@ local function detectIntent(message)
     
     local intents = {
         math = {
-            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "sqrt", "sin", "cos"},
+            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "sqrt", "sin", "cos", "tan"},
             weight = 2.0
         },
         time = {
@@ -471,7 +466,7 @@ local function detectIntent(message)
 end
 
 -- ============================================================================
--- RESPONSE GENERATION
+-- RESPONSE GENERATION (FULL LOGIC)
 -- ============================================================================
 
 local function handleGreeting(user, message)
@@ -959,24 +954,26 @@ function M.run()
                     if term and term.setTextColor then
                         term.setTextColor(memory.chatColor or colors.white)
                     end
-                    print("<" .. BOT_NAME .. "> Hey, earlier you mentioned " .. fact .. " - how's that going?")
+                    print("<" .. BOT_NAME .. "> Hey, earlier you mentioned " .. fact .. ". I was just thinking about that.")
                 end
             end
         end
 
-        term.setTextColor(colors.white)
+        if term and term.setTextColor then
+            term.setTextColor(colors.white)
+        end
         write(getName(user) .. ": ")
         local input = read()
-
+        
         if input:lower() == "quit" or input:lower() == "exit" then
-            saveMemory()
-            print("Goodbye!")
             break
         end
 
         local response = interpret(input, user)
         
-        term.setTextColor(memory.chatColor or colors.white)
+        if term and term.setTextColor then
+            term.setTextColor(memory.chatColor or colors.cyan)
+        end
         print("<" .. BOT_NAME .. "> " .. response)
         
         messagesSinceProactive = messagesSinceProactive + 1
