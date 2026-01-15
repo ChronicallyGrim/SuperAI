@@ -31,12 +31,12 @@ local memory = {
     chatColor = colors.white,
     categories = {},
     negative = {},
-    facts = {},           -- Remember facts user tells us
-    preferences = {},     -- User preferences and likes/dislikes
-    lastTopics = {},      -- Recent conversation topics
+    facts = {},
+    preferences = {},
+    lastTopics = {},
     conversationCount = 0,
     startTime = os.time(),
-    botName = "SuperAI"   -- Customizable bot name
+    botName = "SuperAI"
 }
 
 -- Default categories
@@ -94,7 +94,6 @@ local function loadMemory()
             memory.startTime = loaded.startTime or os.time()
             memory.botName = loaded.botName or "SuperAI"
             
-            -- Update global BOT_NAME
             if memory.botName then
                 BOT_NAME = memory.botName
             end
@@ -137,7 +136,6 @@ local function getSystemHealth()
     table.insert(report, "=== System Health Report ===")
     table.insert(report, "")
     
-    -- Check each drive
     local drives = {
         {name = "Left", side = "left"},
         {name = "Right", side = "right"},
@@ -160,7 +158,6 @@ local function getSystemHealth()
                 local usedPercent = math.floor((used / capacity) * 100)
                 local freePercent = 100 - usedPercent
                 
-                -- Estimate fragmentation (simplified)
                 local files = fs.list(path)
                 local fragmentation = #files > 10 and math.min(#files * 2, 80) or 10
                 
@@ -178,7 +175,6 @@ local function getSystemHealth()
         end
     end
     
-    -- Memory stats
     table.insert(report, "Conversation Stats:")
     table.insert(report, "  Total messages: " .. memory.conversationCount)
     table.insert(report, "  Facts stored: " .. (#memory.facts[memory.nicknames["Player"] or "Player"] or 0))
@@ -211,7 +207,6 @@ local function setBotName(newName)
     return "Cool! You can call me " .. newName .. " now."
 end
 
--- Remember facts about the user
 local function rememberFact(user, fact)
     if not memory.facts[user] then
         memory.facts[user] = {}
@@ -220,14 +215,12 @@ local function rememberFact(user, fact)
         fact = fact,
         timestamp = os.time()
     })
-    -- Keep last 20 facts
     while #memory.facts[user] > 20 do
         table.remove(memory.facts[user], 1)
     end
     saveMemory()
 end
 
--- Remember user preferences (likes/dislikes)
 local function rememberPreference(user, item, isLike)
     if not memory.preferences[user] then
         memory.preferences[user] = {likes = {}, dislikes = {}}
@@ -242,7 +235,6 @@ local function rememberPreference(user, item, isLike)
     saveMemory()
 end
 
--- Get a random fact about the user
 local function recallFact(user)
     if not memory.facts[user] or #memory.facts[user] == 0 then
         return nil
@@ -251,19 +243,16 @@ local function recallFact(user)
     return fact.fact
 end
 
--- Track conversation topics
 local function trackTopic(topic)
     table.insert(memory.lastTopics, {
         topic = topic,
         timestamp = os.time()
     })
-    -- Keep last 10 topics
     while #memory.lastTopics > 10 do
         table.remove(memory.lastTopics, 1)
     end
 end
 
--- Check if we discussed this recently
 local function discussedRecently(topic)
     for i = #memory.lastTopics, math.max(1, #memory.lastTopics - 3), -1 do
         if memory.lastTopics[i].topic:lower():find(topic:lower()) then
@@ -298,16 +287,14 @@ local function updateContext(user, message, category, response)
         category = category,
         response = response,
         timestamp = os.time(),
-        embedding = utils.extractKeywords(message)  -- Simplified "embedding"
+        embedding = utils.extractKeywords(message)
     })
     
-    -- LSTM-like: Keep sliding window of context
     if #memory.context > CONTEXT_WINDOW then
         table.remove(memory.context, 1)
     end
 end
 
--- Sequence-to-Sequence concept: Map input sequence to output
 local function getContextualHistory(user, lookback)
     lookback = lookback or 5
     local history = {}
@@ -324,7 +311,6 @@ local function getContextualHistory(user, lookback)
     return history
 end
 
--- Transformer-like: Attention mechanism - find relevant past context
 local function findRelevantContext(currentMessage, user)
     local currentKeywords = utils.extractKeywords(currentMessage)
     local relevantContexts = {}
@@ -334,7 +320,6 @@ local function findRelevantContext(currentMessage, user)
             local contextKeywords = memory.context[i].embedding or {}
             local relevanceScore = 0
             
-            -- Calculate relevance (attention score)
             for _, currKw in ipairs(currentKeywords) do
                 for _, ctxKw in ipairs(contextKeywords) do
                     if currKw == ctxKw then
@@ -352,7 +337,6 @@ local function findRelevantContext(currentMessage, user)
         end
     end
     
-    -- Sort by relevance score
     table.sort(relevantContexts, function(a, b) return a.score > b.score end)
     
     return relevantContexts
@@ -374,7 +358,6 @@ local function evaluateMath(message)
         end
     end
     
-    -- Try "what is X plus/minus/times/divided by Y"
     local patterns = {
         {"(%d+)%s+plus%s+(%d+)", function(a,b) return a+b end},
         {"(%d+)%s+minus%s+(%d+)", function(a,b) return a-b end},
@@ -394,14 +377,19 @@ local function evaluateMath(message)
 end
 
 -- ============================================================================
--- INTENT DETECTION (Naive Bayes inspired with confidence scores)
+-- INTENT DETECTION
 -- ============================================================================
 
 local function detectIntent(message)
     local msg = message:lower()
+    
+    if msg:find("system health") or msg:find("system status") or 
+       msg:find("diagnostics") or msg:find("storage") then
+        return "system_health", nil, 1.0
+    end
+    
     local intentScores = {}
     
-    -- Score each intent (Naive Bayes concept)
     local intents = {
         math = {
             patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve"},
@@ -445,7 +433,6 @@ local function detectIntent(message)
         }
     }
     
-    -- Calculate scores for each intent
     for intentName, intentData in pairs(intents) do
         intentScores[intentName] = 0
         for _, pattern in ipairs(intentData.patterns) do
@@ -455,7 +442,6 @@ local function detectIntent(message)
         end
     end
     
-    -- Find highest scoring intent (with confidence)
     local bestIntent = "statement"
     local bestScore = 0
     
@@ -466,7 +452,6 @@ local function detectIntent(message)
         end
     end
     
-    -- Calculate confidence (normalized)
     local totalScore = 0
     for _, score in pairs(intentScores) do
         totalScore = totalScore + score
@@ -474,7 +459,6 @@ local function detectIntent(message)
     
     local confidence = totalScore > 0 and (bestScore / totalScore) or 0
     
-    -- Extract entities for certain intents
     local entity = nil
     if bestIntent == "preference_like" then
         entity = msg:match("i like (.+)") or msg:match("i love (.+)") or msg:match("i enjoy (.+)")
@@ -484,7 +468,6 @@ local function detectIntent(message)
         entity = msg:match("remember%s+(.+)") or msg:match("don't forget%s+(.+)")
     end
     
-    -- Return best intent only if confidence is high enough
     if confidence >= INTENT_CONFIDENCE_THRESHOLD then
         return bestIntent, entity, confidence
     else
@@ -510,7 +493,6 @@ local function handleGreeting(user, message)
     
     local response = utils.choose(greetings)
     
-    -- Personalize if we know their name
     if memory.nicknames[user] then
         local personalGreetings = {
             "Hey " .. memory.nicknames[user] .. "! What's up?",
@@ -539,13 +521,6 @@ local function handleGratitude(user, message)
 end
 
 local function handleQuestion(user, message, userMood)
-    -- System health check
-    if message:lower():find("system health") or message:lower():find("system status") or
-       message:lower():find("diagnostics") or message:lower():find("storage") then
-        return getSystemHealth()
-    end
-    
-    -- Check for specific answerable questions
     if message:lower():find("who are you") or message:lower():find("what are you") then
         return "I'm " .. BOT_NAME .. ", just a friendly AI here to chat! What's up?"
     end
@@ -582,7 +557,6 @@ local function handleQuestion(user, message, userMood)
         return utils.choose(responses)
     end
     
-    -- General question handling - be honest but casual
     local responses = {
         "Hmm, good question. What do you think?",
         "I'm not totally sure. What's your take?",
@@ -595,15 +569,10 @@ local function handleQuestion(user, message, userMood)
     return utils.choose(responses)
 end
 
--- ============================================================================
--- RESPONSE GENERATION (Seq2Seq + Context-aware generation)
--- ============================================================================
-
 local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
     
-    -- Detect very short responses (user might be distracted/busy)
     if #message < 10 and #keywords == 0 then
         local shortResponseCount = 0
         local history = getContextualHistory(user, 3)
@@ -614,7 +583,6 @@ local function handleStatement(user, message, userMood)
             end
         end
         
-        -- If user keeps giving short responses, check in
         if shortResponseCount >= 2 and math.random() < 0.5 then
             local checkIns = {
                 "You seem quiet today. Everything okay?",
@@ -626,21 +594,17 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    -- Extract and remember facts mentioned
     if message:lower():find("my ") or message:lower():find("i have") or 
        message:lower():find("i work") or message:lower():find("i live") then
         rememberFact(user, message)
     end
     
-    -- Track topics
     if keywords and #keywords > 0 then
         trackTopic(keywords[1])
     end
     
-    -- Use attention mechanism to find relevant past context
     local relevantPast = findRelevantContext(message, user)
     
-    -- If we have highly relevant past context, reference it
     if relevantPast and #relevantPast > 0 and relevantPast[1].score >= 2 then
         local pastMsg = relevantPast[1].context.message
         if not discussedRecently(pastMsg) and math.random() < 0.3 then
@@ -652,7 +616,6 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    -- For negative moods, be supportive but natural
     if userMood == "negative" then
         local supportive = {
             "That sounds rough.",
@@ -666,7 +629,6 @@ local function handleStatement(user, message, userMood)
         
         local response = utils.choose(supportive)
         
-        -- Use conversation history to provide better follow-up
         local history = getContextualHistory(user, 3)
         if #history > 0 and math.random() < 0.4 then
             local followUps = {
@@ -682,7 +644,6 @@ local function handleStatement(user, message, userMood)
         return response
     end
     
-    -- For positive moods, be enthusiastic
     if userMood == "positive" then
         local positive = {
             "That's awesome!",
@@ -698,7 +659,6 @@ local function handleStatement(user, message, userMood)
         return utils.choose(positive)
     end
     
-    -- Personal stuff - be interested but casual
     if category == "personal" then
         local responses = {
             "Oh yeah? Tell me more.",
@@ -715,7 +675,6 @@ local function handleStatement(user, message, userMood)
         return utils.choose(responses)
     end
     
-    -- Sometimes reference something they told us before (Information Retrieval)
     if math.random() < 0.15 and memory.facts[user] and #memory.facts[user] > 0 then
         local oldFact = recallFact(user)
         if oldFact and not discussedRecently(oldFact) then
@@ -728,7 +687,6 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    -- General conversation - be natural (with context awareness)
     local responses = {
         "Yeah, totally.",
         "I get what you mean.",
@@ -748,7 +706,6 @@ local function handleStatement(user, message, userMood)
     
     local response = utils.choose(responses)
     
-    -- Use RNN-like memory: Consider conversation flow
     local history = getContextualHistory(user, 3)
     local questionStreak = 0
     for _, h in ipairs(history) do
@@ -757,7 +714,6 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    -- Don't ask too many questions in a row (dialogue management)
     local shouldAskQuestion = personality.shouldAskQuestion() and questionStreak < 2 and math.random() < 0.3
     
     if shouldAskQuestion then
@@ -777,27 +733,27 @@ local function handleStatement(user, message, userMood)
 end
 
 -- ============================================================================
--- MAIN INTERPRETATION (with NLP pipeline)
+-- MAIN INTERPRETATION
 -- ============================================================================
 
 local function interpret(message, user)
     memory.conversationCount = memory.conversationCount + 1
     
-    -- STEP 1: Input Processing (NLP) - Understand words and extract intent
     mood.update(user, message)
     local userMood = mood.get(user)
     
-    -- STEP 2: Intent Classification (Naive Bayes + SVM concepts)
     local intent, entity, confidence = detectIntent(message)
     local category = detectCategory(message)
     
-    -- STEP 3: Context Management (LSTM/Transformer concept) - Recall previous turns
     local conversationHistory = getContextualHistory(user, 5)
     local relevantContext = findRelevantContext(message, user)
     
     local response
     
-    -- STEP 4: Information Retrieval/Generation - Access memory or generate response
+    if intent == "system_health" then
+        return getSystemHealth()
+    end
+    
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
@@ -816,7 +772,6 @@ local function interpret(message, user)
         end
         
     elseif intent == "recall" then
-        -- Information Retrieval from memory
         local fact = recallFact(user)
         if fact then
             response = "Yeah, you told me: " .. fact
@@ -838,7 +793,6 @@ local function interpret(message, user)
         
     elseif intent == "change_settings" then
         if message:lower():find("color") then
-            -- Show color picker
             print("")
             print("Pick a new chat color:")
             local chatColors = {
@@ -897,17 +851,13 @@ local function interpret(message, user)
         response = handleQuestion(user, message, userMood)
         
     else
-        -- STEP 5: Response Generation (Seq2Seq) - Formulate natural answer
         response = handleStatement(user, message, userMood)
     end
     
-    -- Apply mood adjustment (sentiment aware)
     response = mood.adjustResponse(user, response)
     
-    -- Store in context (like RNN/LSTM memory)
     updateContext(user, message, category, response)
     
-    -- Periodic save
     if memory.conversationCount % 5 == 0 then
         saveMemory()
     end
@@ -922,7 +872,6 @@ end
 local function firstRunSetup()
     local user = "Player"
     
-    -- Ask for nickname
     if not memory.nicknames[user] then
         print("")
         write("Before we start, what should I call you? ")
@@ -937,7 +886,17 @@ local function firstRunSetup()
         saveMemory()
     end
     
-    -- Ask for chat color
+    print("")
+    write("What would you like to call me? (default: " .. BOT_NAME .. ") ")
+    local botName = read()
+    if botName ~= "" then
+        BOT_NAME = botName
+        memory.botName = botName
+        print("")
+        print("Cool! You can call me " .. BOT_NAME .. " then!")
+        saveMemory()
+    end
+    
     if not memory.chatColor or memory.chatColor == colors.white then
         print("")
         print("What's your favorite chat color?")
@@ -977,16 +936,13 @@ end
 function M.run()
     loadMemory()
     
-    -- Clear screen
     if term and term.clear then term.clear() end
     if term and term.setCursorPos then term.setCursorPos(1, 1) end
     
-    -- Welcome message
     print("==========================================")
     print("           Welcome to " .. BOT_NAME .. "!")
     print("==========================================")
     
-    -- First run setup
     firstRunSetup()
     
     print("")
@@ -997,13 +953,10 @@ function M.run()
     local user = memory.nicknames["Player"] and "Player" or "User"
     local messagesSinceProactive = 0
     
-    -- Main conversation loop
     while true do
-        -- Occasionally be proactive (every 8-12 messages)
         if messagesSinceProactive >= math.random(8, 12) and memory.facts[user] and #memory.facts[user] > 0 then
             messagesSinceProactive = 0
             
-            -- Bring up something they mentioned before
             if math.random() < 0.5 then
                 local fact = recallFact(user)
                 if fact and not discussedRecently(fact) then
@@ -1017,7 +970,6 @@ function M.run()
                     print("")
                 end
             else
-                -- Ask about their preferences
                 if memory.preferences[user] and #memory.preferences[user].likes > 0 then
                     local like = memory.preferences[user].likes[math.random(#memory.preferences[user].likes)]
                     if term and term.setTextColor then
@@ -1032,7 +984,6 @@ function M.run()
             end
         end
         
-        -- Show prompt with chat color
         if term and term.setTextColor then
             term.setTextColor(colors.yellow)
         end
@@ -1044,13 +995,11 @@ function M.run()
         local input = read()
         messagesSinceProactive = messagesSinceProactive + 1
         
-        -- Check for exit
         if input:lower() == "quit" or input:lower() == "exit" then
             if term and term.setTextColor then
                 term.setTextColor(memory.chatColor)
             end
             
-            -- Personalized goodbye
             local goodbyes = {
                 "Bye! It was great talking with you!",
                 "See you later! Take care!",
@@ -1074,7 +1023,6 @@ function M.run()
             break
         end
         
-        -- Skip empty input
         if input == "" then
             if term and term.setTextColor then
                 term.setTextColor(memory.chatColor)
@@ -1084,7 +1032,6 @@ function M.run()
                 term.setTextColor(colors.white)
             end
         else
-            -- Generate and display response
             local response = interpret(input, user)
             
             if term and term.setTextColor then
@@ -1096,7 +1043,7 @@ function M.run()
             end
         end
         
-        print("")  -- Add spacing
+        print("")
     end
 end
 
