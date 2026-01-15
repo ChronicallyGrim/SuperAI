@@ -43,7 +43,7 @@ local memory = {
 -- Default categories
 local defaultCategories = {
     greeting = {"hi", "hello", "hey", "greetings", "sup", "yo"},
-    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided"},
+    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided", "sqrt", "sin", "cos"},
     time = {"time", "clock", "what time"},
     gratitude = {"thanks", "thank you"},
     personal = {"i feel", "i'm feeling", "my"},
@@ -318,37 +318,42 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- IMPROVED MATH EVALUATION
+-- IMPROVED MATH EVALUATION (ADVANCED)
 -- ============================================================================
 
 local function evaluateMath(message)
-    -- Normalize the message for math
     local expr = message:lower()
     
-    -- Convert word-based operators to symbols
+    -- Replace text-based functions/operators with Lua-compliant strings
     expr = expr:gsub("plus", "+")
     expr = expr:gsub("minus", "-")
     expr = expr:gsub("times", "*")
     expr = expr:gsub("multiplied by", "*")
     expr = expr:gsub("divided by", "/")
     expr = expr:gsub("to the power of", "^")
+    expr = expr:gsub("squared", "^2")
     
-    -- Extract only valid math characters: numbers, operators, dots, and parentheses
+    -- Mapping common math functions to math library
+    local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
+    for _, f in ipairs(functions) do
+        expr = expr:gsub(f .. "%s*%(", "math." .. f .. "(")
+    end
+
+    -- Clean everything except numbers, symbols, and math library calls
     local cleanExpr = ""
-    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)]+") do
+    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)math%s]+") do
         cleanExpr = cleanExpr .. token
     end
 
-    -- Basic check to see if we actually have numbers and operators
-    if cleanExpr ~= "" and cleanExpr:match("%d") and cleanExpr:match("[%+%-%*/%%%^]") then
-        -- Use a sandboxed-style approach with a limited environment for safety
-        local func, err = load("return " .. cleanExpr, "math_eval", "t", {math = math})
+    if cleanExpr ~= "" and cleanExpr:match("%d") then
+        -- Execute in a safe environment containing the math table
+        local func, err = load("return " .. cleanExpr, "math_env", "t", {math = math})
         if func then
             local success, result = pcall(func)
             if success and type(result) == "number" then
-                -- Formatting large or decimal numbers nicely
+                -- Handle formatting
                 local output = tostring(result)
-                if output:find("%.") and #output > 6 then
+                if result % 1 ~= 0 then 
                     output = string.format("%.4f", result):gsub("0+$", ""):gsub("%.$", "")
                 end
                 return "The answer is " .. output
@@ -356,10 +361,6 @@ local function evaluateMath(message)
         end
     end
     
-    -- Fallback for simple "What is 5?" style questions
-    local singleNum = message:match("what is (%d+)")
-    if singleNum then return "That's just " .. singleNum .. "!" end
-
     return nil
 end
 
@@ -379,7 +380,7 @@ local function detectIntent(message)
     
     local intents = {
         math = {
-            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "multiplied"},
+            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "sqrt", "sin", "cos"},
             weight = 2.0
         },
         time = {
@@ -744,7 +745,7 @@ local function interpret(message, user)
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
-            response = "I couldn't solve that. Try something like '5 + 3' or 'what is (10 * 2) + 5'."
+            response = "I couldn't solve that. Try something like '5 + 3' or 'sqrt(16)'."
         end
         
     elseif intent == "time" then
@@ -930,8 +931,6 @@ function M.run()
     print("            Welcome to " .. BOT_NAME .. "!")
     print("==========================================")
     
-    -- FIX: Only run setup if botName is still the default. 
-    -- Once setBotName() is called, memory.botName will no longer be "SuperAI"
     if memory.botName == DEFAULT_BOT_NAME then
         firstRunSetup()
     end
@@ -945,7 +944,6 @@ function M.run()
     local messagesSinceProactive = 0
     
     while true do
-        -- Random proactive comment logic
         if messagesSinceProactive >= math.random(8, 12) and memory.facts[user] and #memory.facts[user] > 0 then
             messagesSinceProactive = 0
             if math.random() < 0.5 then
@@ -971,7 +969,6 @@ function M.run()
 
         local response = interpret(input, user)
         
-        -- Display response with chosen color
         term.setTextColor(memory.chatColor or colors.white)
         print("<" .. BOT_NAME .. "> " .. response)
         term.setTextColor(colors.white)
