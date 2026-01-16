@@ -105,12 +105,12 @@ local function saveMemory()
 end
 
 -- ============================================================================
--- SYSTEM DIAGNOSTICS (FIXED FREEZE)
+-- SYSTEM DIAGNOSTICS (FIXED FREEZE & DISPLAY)
 -- ============================================================================
 
 local function getSystemHealth()
     local report = {}
-    table.insert(report, "=== System Health Report ===")
+    table.insert(report, "=== System Health ===")
     table.insert(report, "")
     
     local sides = {"top", "bottom", "left", "right", "front", "back"}
@@ -136,27 +136,29 @@ local function getSystemHealth()
                     local usedPercent = math.floor((used / capacity) * 100)
                     local files = fs.list(path)
                     
-                    table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive (" .. mountPath .. "):")
-                    table.insert(report, "  Capacity: " .. math.floor(capacity / 1024) .. " KB")
+                    -- Capitalize first letter of side
+                    local sideName = side:sub(1,1):upper()..side:sub(2)
+                    table.insert(report, sideName .. " Drive (" .. mountPath .. "):")
+                    table.insert(report, "  Cap: " .. math.floor(capacity / 1024) .. " KB")
                     table.insert(report, "  Used: " .. math.floor(used / 1024) .. " KB (" .. usedPercent .. "%)")
                     table.insert(report, "  Free: " .. math.floor(free / 1024) .. " KB")
                     table.insert(report, "  Files: " .. #files)
                     table.insert(report, "")
                 end
             else
-                table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive: Not mounted or empty")
+                table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive: Not mounted")
                 table.insert(report, "")
             end
         end
     end
     
-    table.insert(report, "Conversation Stats:")
-    table.insert(report, "  Total messages: " .. memory.conversationCount)
-    table.insert(report, "  Facts stored: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
-    table.insert(report, "  Context window: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
+    table.insert(report, "Stats:")
+    table.insert(report, "  Messages: " .. memory.conversationCount)
+    table.insert(report, "  Facts: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
+    table.insert(report, "  Context: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
     
     local uptime = os.time() - memory.startTime
-    table.insert(report, "  Uptime: " .. math.floor(uptime / 60) .. " hours")
+    table.insert(report, "  Uptime: " .. math.floor(uptime / 60) .. " hrs")
     
     return table.concat(report, "\n")
 end
