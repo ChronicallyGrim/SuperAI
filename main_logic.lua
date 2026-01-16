@@ -109,22 +109,15 @@ end
 -- ============================================================================
 
 local function getSystemHealth()
-    local report = {}
-    table.insert(report, "=== System Health ===")
-    table.insert(report, "")
-    
+    -- Collect drive data first
+    local driveData = {}
     local sides = {"top", "bottom", "left", "right", "front", "back"}
-    local driveFound = false
-
+    
     for _, side in ipairs(sides) do
-        -- Yield to OS to prevent "Too long without yielding" freeze
-        sleep(0)
+        sleep(0) -- Yield to OS
         
         if peripheral.isPresent(side) and peripheral.getType(side) == "drive" then
-            driveFound = true
             local drv = peripheral.wrap(side)
-            
-            -- Protected call to check mount path
             local success, mountPath = pcall(function() return drv.getMountPath() end)
             
             if success and mountPath then
@@ -136,31 +129,108 @@ local function getSystemHealth()
                     local usedPercent = math.floor((used / capacity) * 100)
                     local files = fs.list(path)
                     
-                    -- Capitalize first letter of side
-                    local sideName = side:sub(1,1):upper()..side:sub(2)
-                    table.insert(report, sideName .. " Drive (" .. mountPath .. "):")
-                    table.insert(report, "  Cap: " .. math.floor(capacity / 1024) .. " KB")
-                    table.insert(report, "  Used: " .. math.floor(used / 1024) .. " KB (" .. usedPercent .. "%)")
-                    table.insert(report, "  Free: " .. math.floor(free / 1024) .. " KB")
-                    table.insert(report, "  Files: " .. #files)
-                    table.insert(report, "")
+                    driveData[side] = {
+                        mount = mountPath,
+                        cap = math.floor(capacity / 1024),
+                        used = math.floor(used / 1024),
+                        percent = usedPercent,
+                        free = math.floor(free / 1024),
+                        files = #files
+                    }
                 end
-            else
-                table.insert(report, side:sub(1,1):upper()..side:sub(2) .. " Drive: Not mounted")
-                table.insert(report, "")
             end
         end
     end
     
-    table.insert(report, "Stats:")
-    table.insert(report, "  Messages: " .. memory.conversationCount)
-    table.insert(report, "  Facts: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
-    table.insert(report, "  Context: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
+    -- Build visual layout
+    local lines = {}
+    
+    -- Title
+    table.insert(lines, "=== System Health ===")
+    table.insert(lines, "")
+    
+    -- TOP DRIVE
+    if driveData.top then
+        local d = driveData.top
+        table.insert(lines, "         --- Top Drive (" .. d.mount .. ") ---")
+        table.insert(lines, "         " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
+        table.insert(lines, "")
+    end
+    
+    -- LEFT and RIGHT DRIVES (side by side)
+    local leftLines = {}
+    local rightLines = {}
+    
+    if driveData.left then
+        local d = driveData.left
+        table.insert(leftLines, "Left (" .. d.mount .. "):")
+        table.insert(leftLines, d.used .. "/" .. d.cap .. " KB")
+        table.insert(leftLines, "(" .. d.percent .. "%)")
+        table.insert(leftLines, d.files .. " files")
+    else
+        table.insert(leftLines, "")
+        table.insert(leftLines, "")
+        table.insert(leftLines, "")
+        table.insert(leftLines, "")
+    end
+    
+    if driveData.right then
+        local d = driveData.right
+        table.insert(rightLines, "Right (" .. d.mount .. "):")
+        table.insert(rightLines, d.used .. "/" .. d.cap .. " KB")
+        table.insert(rightLines, "(" .. d.percent .. "%)")
+        table.insert(rightLines, d.files .. " files")
+    else
+        table.insert(rightLines, "")
+        table.insert(rightLines, "")
+        table.insert(rightLines, "")
+        table.insert(rightLines, "")
+    end
+    
+    -- Combine left and right with spacing
+    for i = 1, 4 do
+        local left = leftLines[i] or ""
+        local right = rightLines[i] or ""
+        -- Pad left side to 25 chars
+        left = left .. string.rep(" ", 25 - #left)
+        table.insert(lines, left .. right)
+    end
+    
+    table.insert(lines, "")
+    
+    -- FRONT DRIVE
+    if driveData.front then
+        local d = driveData.front
+        table.insert(lines, "        --- Front Drive (" .. d.mount .. ") ---")
+        table.insert(lines, "        " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
+        table.insert(lines, "")
+    end
+    
+    -- BACK DRIVE
+    if driveData.back then
+        local d = driveData.back
+        table.insert(lines, "        --- Back Drive (" .. d.mount .. ") ---")
+        table.insert(lines, "        " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
+        table.insert(lines, "")
+    end
+    
+    -- BOTTOM DRIVE
+    if driveData.bottom then
+        local d = driveData.bottom
+        table.insert(lines, "       --- Bottom Drive (" .. d.mount .. ") ---")
+        table.insert(lines, "       " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
+        table.insert(lines, "")
+    end
+    
+    -- Stats
+    table.insert(lines, "Stats:")
+    table.insert(lines, "  Msg: " .. memory.conversationCount .. " | Facts: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
+    table.insert(lines, "  Context: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
     
     local uptime = os.time() - memory.startTime
-    table.insert(report, "  Uptime: " .. math.floor(uptime / 60) .. " hrs")
+    table.insert(lines, "  Uptime: " .. math.floor(uptime / 60) .. " hrs")
     
-    return table.concat(report, "\n")
+    return table.concat(lines, "\n")
 end
 
 -- ============================================================================
