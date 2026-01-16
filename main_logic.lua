@@ -318,7 +318,7 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- IMPROVED MATH EVALUATION (SURGICAL FIX APPLIED)
+-- IMPROVED MATH EVALUATION (FIXED VERSION)
 -- ============================================================================
 
 local function evaluateMath(message)
@@ -335,17 +335,17 @@ local function evaluateMath(message)
     local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
     for _, f in ipairs(functions) do
         if f == "sin" or f == "cos" or f == "tan" then
-            expr = expr:gsub(f .. "%s*%(([%d%.]+)%)", "math." .. f .. "(math.rad(%1))")
-            expr = expr:gsub(f .. "%s+([%d%.]+)", "math." .. f .. "(math.rad(%1))")
+            expr = expr:gsub(f .. " ?%(([%d%.]+)%)", "math." .. f .. "(math.rad(%1))")
+            expr = expr:gsub(f .. " +([%d%.]+)", "math." .. f .. "(math.rad(%1))")
         else
-            expr = expr:gsub(f .. "%s*%(([%d%.]+)%)", "math." .. f .. "(%1)")
-            expr = expr:gsub(f .. "%s+([%d%.]+)", "math." .. f .. "(%1)")
+            expr = expr:gsub(f .. " ?%(([%d%.]+)%)", "math." .. f .. "(%1)")
+            expr = expr:gsub(f .. " +([%d%.]+)", "math." .. f .. "(%1)")
         end
     end
 
     local cleanExpr = ""
-    -- Pattern updated to allow 'mathrad' keywords
-    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathrad%s]+") do
+    -- FIX: Expanded character whitelist to allow for math logic keywords
+    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathradsincoxtabflogep%s]+") do
         cleanExpr = cleanExpr .. token
     end
 
@@ -367,7 +367,7 @@ local function evaluateMath(message)
 end
 
 -- ============================================================================
--- INTENT DETECTION (SURGICAL FIX APPLIED)
+-- INTENT DETECTION
 -- ============================================================================
 
 local function detectIntent(message)
@@ -499,7 +499,7 @@ local function handleGreeting(user, message)
 end
 
 local function handleGratitude(user, message)
-    local responses = {
+    local responsesList = {
         "You're welcome!",
         "Happy to help!",
         "No problem!",
@@ -507,7 +507,7 @@ local function handleGratitude(user, message)
         "Glad I could help!",
     }
     
-    return utils.choose(responses)
+    return utils.choose(responsesList)
 end
 
 local function handleQuestion(user, message, userMood)
@@ -522,14 +522,14 @@ local function handleQuestion(user, message, userMood)
     
     if message:lower():find("how are you") or message:lower():find("how's it going") or 
        message:lower():find("how are things") then
-        local responses = {
+        local responsesList = {
             "I'm doing great! How about you?",
             "Pretty good! What's going on with you?",
             "Can't complain! How are you?",
             "I'm good, thanks! What about you?",
             "Good good! What's new with you?",
         }
-        return utils.choose(responses)
+        return utils.choose(responsesList)
     end
     
     if message:lower():find("what can you do") or message:lower():find("what do you do") then
@@ -538,16 +538,16 @@ local function handleQuestion(user, message, userMood)
     
     if message:lower():find("what's up") or message:lower():find("sup") or 
        message:lower():find("what are you doing") then
-        local responses = {
+        local responsesList = {
             "Not much, just hanging out! You?",
             "Just chatting with you! What's up with you?",
             "Nothing much! What about you?",
             "Just here, ready to chat! What's going on?",
         }
-        return utils.choose(responses)
+        return utils.choose(responsesList)
     end
     
-    local responses = {
+    local responsesList = {
         "Hmm, good question. What do you think?",
         "I'm not totally sure. What's your take?",
         "That's interesting. I'd have to think about it. What do you think?",
@@ -556,7 +556,7 @@ local function handleQuestion(user, message, userMood)
         "Not sure about that one. What made you think of it?",
     }
     
-    return utils.choose(responses)
+    return utils.choose(responsesList)
 end
 
 local function handleStatement(user, message, userMood)
@@ -650,7 +650,7 @@ local function handleStatement(user, message, userMood)
     end
     
     if category == "personal" then
-        local responses = {
+        local responsesList = {
             "Oh yeah? Tell me more.",
             "What's that like?",
             "Really? How's that been?",
@@ -662,7 +662,7 @@ local function handleStatement(user, message, userMood)
             "Nice! What's the story there?",
             "For real? What's up with that?",
         }
-        return utils.choose(responses)
+        return utils.choose(responsesList)
     end
     
     if math.random() < 0.15 and memory.facts[user] and #memory.facts[user] > 0 then
@@ -677,7 +677,7 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    local responses = {
+    local responsesList = {
         "Yeah, totally.",
         "I get what you mean.",
         "That makes sense.",
@@ -694,7 +694,7 @@ local function handleStatement(user, message, userMood)
         "Totally get it.",
     }
     
-    local response = utils.choose(responses)
+    local response = utils.choose(responsesList)
     
     local history = getContextualHistory(user, 3)
     local questionStreak = 0
