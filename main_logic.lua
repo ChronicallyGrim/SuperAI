@@ -43,7 +43,7 @@ local memory = {
 -- Default categories
 local defaultCategories = {
     greeting = {"hi", "hello", "hey", "greetings", "sup", "yo"},
-    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided", "sqrt", "sin", "cos", "tan"},
+    math = {"calculate", "what is", "solve", "plus", "minus", "times", "divided", "sqrt", "sin", "cos", "tan", "percent"},
     time = {"time", "clock", "what time"},
     gratitude = {"thanks", "thank you"},
     personal = {"i feel", "i'm feeling", "my"},
@@ -318,12 +318,13 @@ local function findRelevantContext(currentMessage, user)
 end
 
 -- ============================================================================
--- IMPROVED MATH EVALUATION (FIXED VERSION)
+-- IMPROVED MATH EVALUATION (UPDATED WITH COMPLEX MATH SUPPORT)
 -- ============================================================================
 
 local function evaluateMath(message)
     local expr = message:lower()
     
+    -- Handle written operators
     expr = expr:gsub("plus", "+")
     expr = expr:gsub("minus", "-")
     expr = expr:gsub("times", "*")
@@ -332,20 +333,26 @@ local function evaluateMath(message)
     expr = expr:gsub("to the power of", "^")
     expr = expr:gsub("squared", "^2")
     
+    -- COMPLEX MATH: Handle percentage calculations (e.g., "50% of 200")
+    expr = expr:gsub("([%d%.]+)%% of ([%d%.]+)", "(%1/100)*%2")
+    expr = expr:gsub("([%d%.]+)%%", "(%1/100)")
+
     local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
     for _, f in ipairs(functions) do
+        -- Wrap functions for Lua math library compatibility
         if f == "sin" or f == "cos" or f == "tan" then
-            expr = expr:gsub(f .. " ?%(([%d%.]+)%)", "math." .. f .. "(math.rad(%1))")
+            expr = expr:gsub(f .. " ?%(([^%)]+)%)", "math." .. f .. "(math.rad(%1))")
             expr = expr:gsub(f .. " +([%d%.]+)", "math." .. f .. "(math.rad(%1))")
         else
-            expr = expr:gsub(f .. " ?%(([%d%.]+)%)", "math." .. f .. "(%1)")
+            expr = expr:gsub(f .. " ?%(([^%)]+)%)", "math." .. f .. "(%1)")
             expr = expr:gsub(f .. " +([%d%.]+)", "math." .. f .. "(%1)")
         end
     end
 
     local cleanExpr = ""
-    -- FIX: Expanded character whitelist to allow for math logic keywords
-    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathradsincoxtabflogep%s]+") do
+    -- FIX: Expanded character whitelist to allow 'q', 'r', and 'l' for sqrt and log
+    -- Whitelist: numbers, basic ops, math keywords, and letters for functions
+    for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathradsincoxtabflogepsqr%s]+") do
         cleanExpr = cleanExpr .. token
     end
 
@@ -382,7 +389,7 @@ local function detectIntent(message)
     
     local intents = {
         math = {
-            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "sqrt", "sin", "cos", "tan"},
+            patterns = {"%d+%s*[%+%-%*/]", "plus", "minus", "times", "divided", "calculate", "solve", "sqrt", "sin", "cos", "tan", "percent", "%%"},
             weight = 2.0
         },
         time = {
@@ -747,7 +754,7 @@ local function interpret(message, user)
     if intent == "math" then
         response = evaluateMath(message)
         if not response then
-            response = "I couldn't solve that. Try something like '5 + 3' or 'sqrt 16'."
+            response = "I couldn't solve that. Try something like '5 + 3', 'sqrt 16', or '10% of 200'."
         end
         
     elseif intent == "time" then
