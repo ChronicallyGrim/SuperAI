@@ -10,7 +10,7 @@ local mood = require("mood")
 local responses = require("responses")
 
 -- NEW: Advanced systems (with safe loading)
-local codeGen, dictionary, learning, neuralNet, machineLearning
+local codeGen, dictionary, learning, neuralNet, machineLearning, largeNeural, trainedNetwork
 
 local success, module = pcall(require, "code_generator")
 if success then 
@@ -47,6 +47,22 @@ if success then
     print("Machine learning loaded - pattern recognition enabled!")
 else
     print("Warning: machine_learning.lua not found - ML features disabled")
+end
+
+success, module = pcall(require, "large_neural_net")
+if success then
+    largeNeural = module
+    print("Large neural network module loaded!")
+    
+    -- Try to load trained network
+    trainedNetwork = largeNeural.loadNetwork("/neural/")
+    if trainedNetwork then
+        print("Loaded trained network with " .. trainedNetwork.total_params .. " parameters!")
+    else
+        print("No trained network found - run neural_trainer to create one")
+    end
+else
+    print("Warning: large_neural_net.lua not found - advanced neural features disabled")
 end
 
 -- Database is now in memory module (memory_RAID_partA.lua)
@@ -450,6 +466,47 @@ local function findRelevantContext(currentMessage, user)
     table.sort(relevantContexts, function(a, b) return a.score > b.score end)
     
     return relevantContexts
+end
+
+-- ============================================================================
+-- NEURAL NETWORK SENTIMENT ANALYSIS
+-- ============================================================================
+
+local function useNeuralNetwork(message)
+    if not trainedNetwork or not largeNeural then
+        return nil  -- Neural network not available
+    end
+    
+    -- Encode message to vector
+    local input = {}
+    for i = 1, trainedNetwork.layer_sizes[1] do
+        if i <= #message then
+            input[i] = string.byte(message, i) / 255
+        else
+            input[i] = 0
+        end
+    end
+    
+    -- Get prediction
+    local output = largeNeural.forward(trainedNetwork, input)
+    
+    -- Interpret output (sentiment classification)
+    local sentiment = "neutral"
+    local confidence = output[2]
+    
+    if output[1] > output[2] and output[1] > output[3] then
+        sentiment = "positive"
+        confidence = output[1]
+    elseif output[3] > output[1] and output[3] > output[2] then
+        sentiment = "negative"
+        confidence = output[3]
+    end
+    
+    return {
+        sentiment = sentiment,
+        confidence = confidence,
+        raw = output
+    }
 end
 
 -- ============================================================================
@@ -944,12 +1001,13 @@ SYSTEM:
     safeCall(mood, "update", nil, user, message)
     local userMood = safeCall(mood, "get", "neutral", user) or "neutral"
     
-    -- NEW: Analyze sentiment with neural network
-    if neuralNet then
-        local sentiment = neuralNet.classifySentiment(message)
-        if sentiment == "negative" and userMood ~= "sad" then
+    -- NEW: Analyze sentiment with large neural network (610K parameters!)
+    local neuralPrediction = useNeuralNetwork(message)
+    if neuralPrediction and neuralPrediction.confidence > 0.6 then
+        -- High confidence prediction from neural network
+        if neuralPrediction.sentiment == "negative" then
             userMood = "concerned"
-        elseif sentiment == "positive" and userMood == "neutral" then
+        elseif neuralPrediction.sentiment == "positive" then
             userMood = "happy"
         end
     end
