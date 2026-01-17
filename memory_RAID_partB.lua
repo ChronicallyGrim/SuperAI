@@ -547,7 +547,7 @@ end
 
 
 -- Extend context memory depth
-local MAX_CONTEXT_DEPTH = 20  -- Can remember last 20 messages
+local MAX_CONTEXT_DEPTH = 10000  -- Can remember last 20 messages
 local function updateExtendedContext(user, message, category)
     table.insert(memory.context, {user=user, message=message, category=category, timestamp=os.time()})
     if #memory.context > MAX_CONTEXT_DEPTH then
@@ -1104,7 +1104,7 @@ end
 
 
 -- Maximum number of conversation turns to remember per user
-local CONTEXT_LIMIT = 20
+local CONTEXT_LIMIT = 10000
 
 -- Add a new entry to context memory
 local function addContext(user, message, response, category)
@@ -1865,7 +1865,7 @@ end
 
 
 -- Maximum number of context entries to retain
-local CONTEXT_LIMIT = 20
+local CONTEXT_LIMIT = 10000
 
 -- Add a message to context memory
 local function addToContext(user, message, category, response)
