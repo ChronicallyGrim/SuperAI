@@ -3202,3 +3202,228 @@ end
 
 
 -- Track the user's mood over recent messages
+
+-- ============================================================================
+-- INTEGRATED DATABASE SYSTEM
+-- ============================================================================
+
+-- Database storage within memory
+memory.databases = {}
+memory.currentDB = nil
+
+-- Create a new database
+function createDatabase(name)
+    if memory.databases[name] then
+        return false, "Database already exists"
+    end
+    
+    memory.databases[name] = {
+        tables = {},
+        indices = {},
+        metadata = {
+            created = os.time(),
+            modified = os.time(),
+        }
+    }
+    
+    memory.currentDB = name
+    return true, "Database created: " .. name
+end
+
+-- Use a database
+function useDatabase(name)
+    if not memory.databases[name] then
+        return false, "Database does not exist"
+    end
+    memory.currentDB = name
+    return true, "Using database: " .. name
+end
+
+-- Create a table
+function createTable(tableName, schema)
+    if not memory.currentDB then
+        return false, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    if db.tables[tableName] then
+        return false, "Table already exists"
+    end
+    
+    db.tables[tableName] = {
+        schema = schema,
+        rows = {},
+        autoIncrement = 1,
+    }
+    
+    return true, "Table created: " .. tableName
+end
+
+-- Insert data
+function insertData(tableName, data)
+    if not memory.currentDB then
+        return false, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local tbl = db.tables[tableName]
+    
+    if not tbl then
+        return false, "Table does not exist"
+    end
+    
+    if not data.id then
+        data.id = tbl.autoIncrement
+        tbl.autoIncrement = tbl.autoIncrement + 1
+    end
+    
+    table.insert(tbl.rows, data)
+    return true, "Inserted with ID: " .. data.id
+end
+
+-- Select data
+function selectData(tableName, conditions)
+    if not memory.currentDB then
+        return nil, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local tbl = db.tables[tableName]
+    
+    if not tbl then
+        return nil, "Table does not exist"
+    end
+    
+    local results = {}
+    
+    for _, row in ipairs(tbl.rows) do
+        local match = true
+        if conditions then
+            for field, value in pairs(conditions) do
+                if row[field] ~= value then
+                    match = false
+                    break
+                end
+            end
+        end
+        if match then
+            table.insert(results, row)
+        end
+    end
+    
+    return results, "Found " .. #results .. " rows"
+end
+
+-- Update data
+function updateData(tableName, conditions, updates)
+    if not memory.currentDB then
+        return false, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local tbl = db.tables[tableName]
+    
+    if not tbl then
+        return false, "Table does not exist"
+    end
+    
+    local count = 0
+    for _, row in ipairs(tbl.rows) do
+        local match = true
+        if conditions then
+            for field, value in pairs(conditions) do
+                if row[field] ~= value then
+                    match = false
+                    break
+                end
+            end
+        end
+        if match then
+            for field, value in pairs(updates) do
+                row[field] = value
+            end
+            count = count + 1
+        end
+    end
+    
+    return true, "Updated " .. count .. " rows"
+end
+
+-- Delete data
+function deleteData(tableName, conditions)
+    if not memory.currentDB then
+        return false, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local tbl = db.tables[tableName]
+    
+    if not tbl then
+        return false, "Table does not exist"
+    end
+    
+    local count = 0
+    local i = 1
+    while i <= #tbl.rows do
+        local row = tbl.rows[i]
+        local match = true
+        if conditions then
+            for field, value in pairs(conditions) do
+                if row[field] ~= value then
+                    match = false
+                    break
+                end
+            end
+        end
+        if match then
+            table.remove(tbl.rows, i)
+            count = count + 1
+        else
+            i = i + 1
+        end
+    end
+    
+    return true, "Deleted " .. count .. " rows"
+end
+
+-- List all databases
+function listDatabases()
+    local names = {}
+    for name, _ in pairs(memory.databases) do
+        table.insert(names, name)
+    end
+    return names
+end
+
+-- List tables in current database
+function listTables()
+    if not memory.currentDB then
+        return nil, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local names = {}
+    for name, _ in pairs(db.tables) do
+        table.insert(names, name)
+    end
+    return names
+end
+
+-- Get table row count
+function getTableStats(tableName)
+    if not memory.currentDB then
+        return nil, "No database selected"
+    end
+    
+    local db = memory.databases[memory.currentDB]
+    local tbl = db.tables[tableName]
+    
+    if not tbl then
+        return nil, "Table does not exist"
+    end
+    
+    return {
+        rowCount = #tbl.rows,
+        schema = tbl.schema,
+    }
+end
