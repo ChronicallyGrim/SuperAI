@@ -531,4 +531,668 @@ function M.deepCopy(orig)
     return copy
 end
 
+-- ============================================================================
+-- ADVANCED TEXT ANALYSIS
+-- ============================================================================
+
+-- Detect writing style
+function M.detectWritingStyle(text)
+    if not text or #text < 10 then return "minimal" end
+    
+    local wordCount = #M.tokenize(text)
+    local sentenceCount = select(2, text:gsub("[.!?]+", "")) + 1
+    local avgWordsPerSentence = wordCount / sentenceCount
+    
+    -- Count complex words (more than 3 syllables - rough approximation)
+    local complexWords = 0
+    for word in text:gmatch("%w+") do
+        local vowelCount = select(2, word:lower():gsub("[aeiou]+", ""))
+        if vowelCount > 3 then
+            complexWords = complexWords + 1
+        end
+    end
+    
+    local complexityRatio = complexWords / wordCount
+    
+    if avgWordsPerSentence > 20 or complexityRatio > 0.3 then
+        return "elaborate"
+    elseif avgWordsPerSentence > 12 or complexityRatio > 0.2 then
+        return "moderate"
+    elseif avgWordsPerSentence > 7 then
+        return "casual"
+    else
+        return "concise"
+    end
+end
+
+-- Detect if message is a story
+function M.detectStory(text)
+    if not text then return false end
+    
+    local storyIndicators = {
+        beginnings = {"so i", "yesterday", "last week", "one time", "once i", "there was", "remember when"},
+        middles = {"and then", "but then", "suddenly", "after that", "next"},
+        details = {"because", "which", "where", "when", "who", "while"},
+    }
+    
+    local lower = text:lower()
+    local indicatorCount = 0
+    
+    for category, indicators in pairs(storyIndicators) do
+        for _, indicator in ipairs(indicators) do
+            if lower:find(indicator, 1, true) then
+                indicatorCount = indicatorCount + 1
+            end
+        end
+    end
+    
+    return indicatorCount >= 2
+end
+
+-- Detect communication style
+function M.detectCommunicationStyle(messages)
+    -- Analyze last few messages to determine style
+    if not messages or #messages < 3 then return "balanced" end
+    
+    local totalLength = 0
+    local questionCount = 0
+    local exclamationCount = 0
+    local statementCount = 0
+    
+    for _, msg in ipairs(messages) do
+        totalLength = totalLength + #msg
+        if msg:find("?") then questionCount = questionCount + 1 end
+        if msg:find("!") then exclamationCount = exclamationCount + 1 end
+        if msg:find("%.") then statementCount = statementCount + 1 end
+    end
+    
+    local avgLength = totalLength / #messages
+    
+    if questionCount > #messages * 0.6 then
+        return "inquisitive"
+    elseif exclamationCount > #messages * 0.5 then
+        return "enthusiastic"
+    elseif avgLength > 150 then
+        return "detailed"
+    elseif avgLength < 30 then
+        return "brief"
+    else
+        return "balanced"
+    end
+end
+
+-- ============================================================================
+-- CONVERSATION QUALITY METRICS
+-- ============================================================================
+
+-- Calculate conversation depth
+function M.getConversationDepth(messages)
+    if not messages or #messages == 0 then return 0 end
+    
+    local depthScore = 0
+    local deepTopics = {
+        "feel", "think", "believe", "understand", "realize", "learn",
+        "grow", "change", "wonder", "question", "meaning", "purpose",
+        "value", "important", "matter", "care", "love", "fear", "hope"
+    }
+    
+    for _, msg in ipairs(messages) do
+        local lower = msg:lower()
+        for _, topic in ipairs(deepTopics) do
+            if lower:find(topic) then
+                depthScore = depthScore + 1
+            end
+        end
+    end
+    
+    return depthScore / #messages
+end
+
+-- Detect engagement level
+function M.detectEngagement(message)
+    if not message then return "low" end
+    
+    local length = #message
+    local hasQuestion = message:find("?") ~= nil
+    local hasExclamation = message:find("!") ~= nil
+    local wordCount = #M.tokenize(message)
+    
+    local engagementScore = 0
+    
+    if length > 50 then engagementScore = engagementScore + 2 end
+    if hasQuestion then engagementScore = engagementScore + 1 end
+    if hasExclamation then engagementScore = engagementScore + 1 end
+    if wordCount > 10 then engagementScore = engagementScore + 1 end
+    
+    if engagementScore >= 4 then
+        return "high"
+    elseif engagementScore >= 2 then
+        return "medium"
+    else
+        return "low"
+    end
+end
+
+-- ============================================================================
+-- RESPONSE MATCHING UTILITIES
+-- ============================================================================
+
+-- Match user's tone
+function M.matchTone(userMessage)
+    if not userMessage then return "neutral" end
+    
+    local lower = userMessage:lower()
+    
+    -- Check for formal tone
+    local formalWords = {"sir", "madam", "please", "kindly", "would you", "could you"}
+    for _, word in ipairs(formalWords) do
+        if lower:find(word) then
+            return "formal"
+        end
+    end
+    
+    -- Check for casual/slang
+    local casualWords = {"yeah", "nah", "gonna", "wanna", "dunno", "kinda", "sorta", "lol", "omg"}
+    local casualCount = 0
+    for _, word in ipairs(casualWords) do
+        if lower:find(word) then
+            casualCount = casualCount + 1
+        end
+    end
+    
+    if casualCount >= 2 then
+        return "casual"
+    end
+    
+    -- Check for enthusiastic
+    local exclamations = select(2, userMessage:gsub("!", ""))
+    if exclamations >= 2 then
+        return "enthusiastic"
+    end
+    
+    -- Check for serious/contemplative
+    local seriousWords = {"honestly", "seriously", "really", "actually", "truth"}
+    for _, word in ipairs(seriousWords) do
+        if lower:find(word) then
+            return "serious"
+        end
+    end
+    
+    return "neutral"
+end
+
+-- ============================================================================
+-- CONVERSATION TOPIC EXTRACTION
+-- ============================================================================
+
+-- Extract main topics from text
+function M.extractTopics(text)
+    if not text then return {} end
+    
+    local topicCategories = {
+        emotions = {"feel", "emotion", "happy", "sad", "angry", "scared", "excited", "anxious", "worried"},
+        work = {"work", "job", "career", "boss", "coworker", "project", "task", "deadline", "meeting"},
+        relationships = {"friend", "family", "partner", "relationship", "love", "trust", "conflict", "connection"},
+        health = {"health", "sick", "tired", "energy", "sleep", "exercise", "stress", "pain"},
+        goals = {"goal", "dream", "ambition", "want", "wish", "hope", "plan", "achieve", "success"},
+        challenges = {"problem", "difficult", "hard", "struggle", "issue", "trouble", "challenge", "obstacle"},
+        learning = {"learn", "study", "understand", "knowledge", "skill", "practice", "improve", "grow"}
+    }
+    
+    local foundTopics = {}
+    local lower = text:lower()
+    
+    for category, keywords in pairs(topicCategories) do
+        for _, keyword in ipairs(keywords) do
+            if lower:find(keyword) then
+                if not M.tableContains(foundTopics, category) then
+                    table.insert(foundTopics, category)
+                end
+                break
+            end
+        end
+    end
+    
+    return foundTopics
+end
+
+-- ============================================================================
+-- PERSONALIZATION UTILITIES
+-- ============================================================================
+
+-- Detect user's preferred communication pace
+function M.detectPreferredPace(responseTime)
+    if not responseTime then return "normal" end
+    
+    if responseTime < 5 then
+        return "fast" -- User responds quickly
+    elseif responseTime > 30 then
+        return "slow" -- User takes time to respond
+    else
+        return "normal"
+    end
+end
+
+-- Suggest response length based on user's messages
+function M.suggestResponseLength(userMessages)
+    if not userMessages or #userMessages == 0 then return "medium" end
+    
+    local totalLength = 0
+    for _, msg in ipairs(userMessages) do
+        totalLength = totalLength + #msg
+    end
+    
+    local avgLength = totalLength / #userMessages
+    
+    if avgLength < 30 then
+        return "short" -- Match user's brevity
+    elseif avgLength > 150 then
+        return "long" -- Match user's detail
+    else
+        return "medium"
+    end
+end
+
+-- ============================================================================
+-- EMPATHY UTILITIES
+-- ============================================================================
+
+-- Detect vulnerability in message
+function M.detectVulnerability(message)
+    if not message then return false end
+    
+    local vulnerabilityIndicators = {
+        "struggling", "difficult", "hard", "can't", "don't know",
+        "worried", "scared", "afraid", "anxious", "overwhelmed",
+        "lonely", "alone", "help", "lost", "confused", "unsure"
+    }
+    
+    local lower = message:lower()
+    for _, indicator in ipairs(vulnerabilityIndicators) do
+        if lower:find(indicator) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Detect celebration/success in message
+function M.detectSuccess(message)
+    if not message then return false end
+    
+    local successIndicators = {
+        "finally", "accomplished", "achieved", "succeeded", "won",
+        "finished", "completed", "did it", "made it", "proud",
+        "excited", "happy", "great news", "good news", "success"
+    }
+    
+    local lower = message:lower()
+    for _, indicator in ipairs(successIndicators) do
+        if lower:find(indicator) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- ============================================================================
+-- INTELLIGENT PARAPHRASING
+-- ============================================================================
+
+-- Paraphrase common phrases
+M.paraphrases = {
+    ["how are you"] = {"How's it going?", "How are things?", "How have you been?", "What's up?"},
+    ["thank you"] = {"Thanks!", "I appreciate it!", "Much appreciated!", "That means a lot!"},
+    ["i understand"] = {"I get it.", "I see what you mean.", "That makes sense.", "I follow you."},
+    ["i agree"] = {"Exactly.", "Totally.", "I'm with you on that.", "You're right."},
+    ["that's interesting"] = {"That's fascinating!", "How intriguing!", "That's noteworthy!", "That caught my attention!"},
+    ["tell me more"] = {"I'd love to hear more.", "Go on...", "What else?", "Continue..."},
+}
+
+-- Get paraphrase
+function M.getParaphrase(phrase)
+    local lower = phrase:lower()
+    
+    for original, alternatives in pairs(M.paraphrases) do
+        if lower:find(original, 1, true) then
+            return alternatives[math.random(#alternatives)]
+        end
+    end
+    
+    return phrase
+end
+
+-- ============================================================================
+-- TEXT VARIATION
+-- ============================================================================
+
+-- Add variety to responses
+function M.addVariety(baseResponse)
+    if not baseResponse then return "" end
+    
+    local starters = {"", "Well, ", "So, ", "Actually, ", "You know, ", "I think ", "Honestly, "}
+    local enders = {"", "!", ".", " :)", " 😊"}
+    
+    if math.random() < 0.3 then
+        local starter = starters[math.random(#starters)]
+        baseResponse = starter .. baseResponse
+    end
+    
+    if math.random() < 0.2 then
+        local ender = enders[math.random(#enders)]
+        baseResponse = baseResponse .. ender
+    end
+    
+    return baseResponse
+end
+
+-- ============================================================================
+-- GRAPH ALGORITHMS & ADVANCED MATH
+-- ============================================================================
+
+-- Graph data structure
+M.Graph = {}
+M.Graph.__index = M.Graph
+
+function M.Graph.new(directed)
+    return setmetatable({
+        vertices = {},
+        edges = {},
+        directed = directed or false,
+    }, M.Graph)
+end
+
+function M.Graph:addVertex(id, data)
+    if not self.vertices[id] then
+        self.vertices[id] = {
+            id = id,
+            data = data or {},
+            neighbors = {},
+        }
+        return true
+    end
+    return false
+end
+
+function M.Graph:addEdge(from, to, weight)
+    if not self.vertices[from] or not self.vertices[to] then
+        return false
+    end
+    
+    weight = weight or 1
+    
+    if not self.edges[from] then
+        self.edges[from] = {}
+    end
+    
+    self.edges[from][to] = weight
+    table.insert(self.vertices[from].neighbors, to)
+    
+    if not self.directed then
+        if not self.edges[to] then
+            self.edges[to] = {}
+        end
+        self.edges[to][from] = weight
+        table.insert(self.vertices[to].neighbors, from)
+    end
+    
+    return true
+end
+
+function M.Graph:getNeighbors(id)
+    if self.vertices[id] then
+        return self.vertices[id].neighbors
+    end
+    return {}
+end
+
+function M.Graph:getWeight(from, to)
+    if self.edges[from] and self.edges[from][to] then
+        return self.edges[from][to]
+    end
+    return nil
+end
+
+-- BFS pathfinding
+function M.Graph:findPath(start, goal)
+    if not self.vertices[start] or not self.vertices[goal] then
+        return nil
+    end
+    
+    local queue = {start}
+    local visited = {[start] = true}
+    local parent = {}
+    
+    while #queue > 0 do
+        local current = table.remove(queue, 1)
+        
+        if current == goal then
+            local path = {}
+            while current do
+                table.insert(path, 1, current)
+                current = parent[current]
+            end
+            return path
+        end
+        
+        for _, neighbor in ipairs(self:getNeighbors(current)) do
+            if not visited[neighbor] then
+                visited[neighbor] = true
+                parent[neighbor] = current
+                table.insert(queue, neighbor)
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- Dijkstra's shortest path
+function M.Graph:shortestPath(start, goal)
+    if not self.vertices[start] or not self.vertices[goal] then
+        return nil, nil
+    end
+    
+    local dist = {}
+    local prev = {}
+    local unvisited = {}
+    
+    for id, _ in pairs(self.vertices) do
+        dist[id] = math.huge
+        unvisited[id] = true
+    end
+    dist[start] = 0
+    
+    while next(unvisited) do
+        local minDist = math.huge
+        local current = nil
+        
+        for id, _ in pairs(unvisited) do
+            if dist[id] < minDist then
+                minDist = dist[id]
+                current = id
+            end
+        end
+        
+        if current == goal then
+            local path = {}
+            while current do
+                table.insert(path, 1, current)
+                current = prev[current]
+            end
+            return path, dist[goal]
+        end
+        
+        unvisited[current] = nil
+        
+        for _, neighbor in ipairs(self:getNeighbors(current)) do
+            if unvisited[neighbor] then
+                local alt = dist[current] + self:getWeight(current, neighbor)
+                if alt < dist[neighbor] then
+                    dist[neighbor] = alt
+                    prev[neighbor] = current
+                end
+            end
+        end
+    end
+    
+    return nil, nil
+end
+
+-- Check if graph has cycles
+function M.Graph:hasCycle()
+    local visited = {}
+    local recStack = {}
+    
+    local function detectCycle(node, parent)
+        visited[node] = true
+        recStack[node] = true
+        
+        for _, neighbor in ipairs(self:getNeighbors(node)) do
+            if not visited[neighbor] then
+                if detectCycle(neighbor, node) then
+                    return true
+                end
+            elseif recStack[neighbor] and neighbor ~= parent then
+                return true
+            end
+        end
+        
+        recStack[node] = false
+        return false
+    end
+    
+    for id, _ in pairs(self.vertices) do
+        if not visited[id] then
+            if detectCycle(id, nil) then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+-- Advanced math functions
+M.math = {}
+
+-- Calculate factorial
+function M.math.factorial(n)
+    if n <= 1 then return 1 end
+    return n * M.math.factorial(n - 1)
+end
+
+-- Calculate fibonacci
+function M.math.fibonacci(n)
+    if n <= 1 then return n end
+    local a, b = 0, 1
+    for i = 2, n do
+        a, b = b, a + b
+    end
+    return b
+end
+
+-- Calculate GCD (greatest common divisor)
+function M.math.gcd(a, b)
+    while b ~= 0 do
+        a, b = b, a % b
+    end
+    return a
+end
+
+-- Calculate LCM (least common multiple)
+function M.math.lcm(a, b)
+    return (a * b) / M.math.gcd(a, b)
+end
+
+-- Check if number is prime
+function M.math.isPrime(n)
+    if n < 2 then return false end
+    if n == 2 then return true end
+    if n % 2 == 0 then return false end
+    
+    for i = 3, math.sqrt(n), 2 do
+        if n % i == 0 then
+            return false
+        end
+    end
+    return true
+end
+
+-- Get prime factors
+function M.math.primeFactors(n)
+    local factors = {}
+    local d = 2
+    
+    while n > 1 do
+        while n % d == 0 do
+            table.insert(factors, d)
+            n = n / d
+        end
+        d = d + 1
+        if d * d > n then
+            if n > 1 then
+                table.insert(factors, n)
+            end
+            break
+        end
+    end
+    
+    return factors
+end
+
+-- Calculate power efficiently
+function M.math.power(base, exp)
+    if exp == 0 then return 1 end
+    if exp == 1 then return base end
+    
+    local half = M.math.power(base, math.floor(exp / 2))
+    
+    if exp % 2 == 0 then
+        return half * half
+    else
+        return base * half * half
+    end
+end
+
+-- Matrix operations
+M.math.matrix = {}
+
+-- Matrix multiplication
+function M.math.matrix.multiply(a, b)
+    local rows_a, cols_a = #a, #a[1]
+    local rows_b, cols_b = #b, #b[1]
+    
+    if cols_a ~= rows_b then
+        return nil, "Incompatible dimensions"
+    end
+    
+    local result = {}
+    for i = 1, rows_a do
+        result[i] = {}
+        for j = 1, cols_b do
+            result[i][j] = 0
+            for k = 1, cols_a do
+                result[i][j] = result[i][j] + a[i][k] * b[k][j]
+            end
+        end
+    end
+    
+    return result
+end
+
+-- Matrix transpose
+function M.math.matrix.transpose(m)
+    local result = {}
+    for i = 1, #m[1] do
+        result[i] = {}
+        for j = 1, #m do
+            result[i][j] = m[j][i]
+        end
+    end
+    return result
+end
+
 return M
