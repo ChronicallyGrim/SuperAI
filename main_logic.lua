@@ -49,6 +49,26 @@ local CONTEXT_WINDOW = 15
 local INTENT_CONFIDENCE_THRESHOLD = 0.6
 
 -- ============================================================================
+-- SAFE CALL HELPERS
+-- ============================================================================
+
+-- Safely call a module function, return default if fails
+local function safeCall(module, funcName, default, ...)
+    if module and module[funcName] and type(module[funcName]) == "function" then
+        local success, result = pcall(module[funcName], ...)
+        if success then
+            return result
+        end
+    end
+    return default
+end
+
+-- Check if a module function exists
+local function hasFunction(module, funcName)
+    return module and module[funcName] and type(module[funcName]) == "function"
+end
+
+-- ============================================================================
 -- MEMORY SYSTEM
 -- ============================================================================
 
@@ -810,7 +830,7 @@ local function handleStatement(user, message, userMood)
         end
     end
     
-    local shouldAskQuestion = personality.shouldAskQuestion() and questionStreak < 2 and math.random() < 0.3
+    local shouldAskQuestion = hasFunction(personality, "shouldAskQuestion") and personality.shouldAskQuestion() and questionStreak < 2 and math.random() < 0.3
     
     if shouldAskQuestion then
         local followUps = {
@@ -881,8 +901,8 @@ SYSTEM:
 ]]
     end
     
-    mood.update(user, message)
-    local userMood = mood.get(user)
+    safeCall(mood, "update", nil, user, message)
+    local userMood = safeCall(mood, "get", "neutral", user) or "neutral"
     
     -- NEW: Code generation commands
     if codeGen and (message:lower():find("write a") or message:lower():find("create a function") or message:lower():find("generate code")) then
@@ -980,17 +1000,22 @@ SYSTEM:
     
     -- Check for jokes command
     if message:lower():find("tell me a joke") or message:lower() == "joke" then
-        return responses.getJoke()
+        local joke = safeCall(responses, "getJoke", "Why did the computer go to the doctor? It had a virus! 😄")
+        return joke
     end
     
-    -- Check if user needs emotional support
-    local needsSupport, emotionType = personality.needsSupport(message)
-    if needsSupport then
+    -- Check if user needs emotional support  
+    local needsSupport = safeCall(personality, "needsSupport", false, message)
+    local emotionType = nil
+    if needsSupport and hasFunction(personality, "needsSupport") then
+        needsSupport, emotionType = personality.needsSupport(message)
+    end
+    if needsSupport and hasFunction(personality, "getSupportiveResponse") then
         return personality.getSupportiveResponse(emotionType)
     end
     
     -- Detect user activity
-    local activity = personality.detectActivity(message)
+    local activity = safeCall(personality, "detectActivity", nil, message)
     
     local intent, entity, confidence = detectIntent(message)
     local category = detectCategory(message)
@@ -1172,12 +1197,12 @@ SYSTEM:
         
     elseif intent == "gratitude" then
         response = handleGratitude(user, message)
-        personality.evolve("positive", {messageType = "general"})
-        personality.recordJokeReaction(true)
+        safeCall(personality, "evolve", nil, "positive", {messageType = "general"})
+        safeCall(personality, "recordJokeReaction", nil, true)
         
     elseif intent == "question" then
         response = handleQuestion(user, message, userMood)
-        personality.resetQuestionCount()
+        safeCall(personality, "resetQuestionCount", nil)
         
     else
         response = handleStatement(user, message, userMood)
@@ -1185,7 +1210,7 @@ SYSTEM:
     
     -- Add wisdom occasionally for thoughtful conversations
     if userMood == "contemplative" and math.random() < 0.15 then
-        local wisdom = responses.getWisdom()
+        local wisdom = safeCall(responses, "getWisdom", nil)
         if wisdom then
             response = response .. " " .. wisdom
         end
@@ -1193,22 +1218,22 @@ SYSTEM:
     
     -- Add encouragement if user seems to be struggling
     if activity == "working" and math.random() < 0.3 then
-        local encourage = responses.getEncouragement("perseverance")
+        local encourage = safeCall(responses, "getEncouragement", nil, "perseverance")
         if encourage then
             response = response .. " " .. encourage
         end
     end
     
     -- Maybe tell a joke
-    if personality.shouldTellJoke() then
-        local joke = responses.getJoke()
+    if hasFunction(personality, "shouldTellJoke") and personality.shouldTellJoke() then
+        local joke = safeCall(responses, "getJoke", nil)
         if joke then
             response = response .. " " .. joke
         end
     end
     
     -- Maybe ask a question
-    if personality.shouldAskQuestion() and not message:find("?") then
+    if hasFunction(personality, "shouldAskQuestion") and personality.shouldAskQuestion() and not message:find("?") then
         -- Choose question category based on context
         local questionCategory = "getting_to_know"
         if activity == "working" then
@@ -1217,13 +1242,13 @@ SYSTEM:
             questionCategory = "reflective"
         end
         
-        local question = personality.getQuestion(questionCategory)
+        local question = safeCall(personality, "getQuestion", nil, questionCategory)
         if question then
             response = response .. " " .. question
         end
     end
     
-    response = mood.adjustResponse(user, response)
+    response = safeCall(mood, "adjustResponse", response, user, response) or response
     
     updateContext(user, message, category, response)
     
