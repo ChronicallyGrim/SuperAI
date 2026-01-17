@@ -9,6 +9,14 @@ local personality = require("personality")
 local mood = require("mood")
 local responses = require("responses")
 
+-- NEW: Advanced systems
+local codeGen = require("code_generator")
+local dictionary = require("dictionary")
+local learning = require("learning")
+
+-- Database is now in memory module (memory_RAID_partA.lua)
+-- Graph algorithms are now in utils.math
+
 -- ============================================================================
 -- CONFIGURATION
 -- ============================================================================
@@ -808,8 +816,145 @@ end
 local function interpret(message, user)
     memory.conversationCount = memory.conversationCount + 1
     
+    -- Help command
+    if message:lower() == "help" or message:lower() == "commands" then
+        return [[
+SuperAI - Advanced AI Assistant
+
+CONVERSATION:
+• Just talk naturally!
+• "tell me a joke"
+• "how are you?"
+
+CODE GENERATION:
+• "write a function to add numbers"
+• "create a for loop"
+• "generate a stack data structure"
+
+MATH:
+• Basic: 5 + 3, sqrt(16), 10% of 200
+• Advanced: factorial of 5, fibonacci of 10
+• Primes: is 17 prime, prime factors of 60
+• Other: gcd of 48 and 18, 2^10
+
+DICTIONARY:
+• "define algorithm"
+• "what does recursion mean"
+
+LEARNING:
+• "learn this: [concept]"
+• "remember this: [fact]"
+
+DATABASE:
+• "create database mydb"
+• "use database mydb"
+• "list databases"
+• "list tables"
+
+GRAPHS:
+• Use utils.Graph.new() programmatically
+• findPath(), shortestPath()
+
+SYSTEM:
+• "my name is [name]"
+• "call yourself [name]"
+• "system health"
+]]
+    end
+    
     mood.update(user, message)
     local userMood = mood.get(user)
+    
+    -- NEW: Code generation commands
+    if message:lower():find("write a") or message:lower():find("create a function") or message:lower():find("generate code") then
+        local code = codeGen.generate(message)
+        if code then
+            return "Here's the code:\n\n" .. code .. "\n\nNeed any changes?"
+        end
+    end
+    
+    -- NEW: Dictionary lookups
+    if message:lower():find("define ") or message:lower():find("what does .* mean") or message:lower():find("definition of") then
+        local word = message:match("define%s+(%w+)") or message:match("definition of%s+(%w+)") or message:match("what does%s+(%w+)%s+mean")
+        if word then
+            local def = dictionary.define(word)
+            if def then
+                return string.format("%s (%s): %s", word, def.type, def.def)
+            else
+                return "I don't know that word yet. You can teach it to me!"
+            end
+        end
+    end
+    
+    -- NEW: Learning commands
+    if message:lower():find("learn this:") or message:lower():find("remember this:") then
+        local content = message:match("[Ll]earn this:%s*(.+)") or message:match("[Rr]emember this:%s*(.+)")
+        if content then
+            local result = learning.teach("general", content)
+            return "Got it! " .. result
+        end
+    end
+    
+    -- NEW: Graph/pathfinding commands
+    if message:lower():find("find path") or message:lower():find("shortest route") then
+        return "I can help with pathfinding! Graph algorithms are built into my utils system.\nUse: utils.Graph.new() to create graphs, then findPath() or shortestPath()"
+    end
+    
+    -- NEW: Database commands
+    if message:lower():find("create database") then
+        local dbName = message:match("create database%s+(%w+)")
+        if dbName then
+            local success, msg = createDatabase(dbName)
+            return msg
+        end
+        return "Please specify database name: 'create database mydb'"
+    end
+    
+    if message:lower():find("use database") then
+        local dbName = message:match("use database%s+(%w+)")
+        if dbName then
+            local success, msg = useDatabase(dbName)
+            return msg
+        end
+        return "Please specify database name: 'use database mydb'"
+    end
+    
+    if message:lower():find("list databases") then
+        local dbs = listDatabases()
+        if #dbs == 0 then
+            return "No databases exist yet. Create one with: 'create database mydb'"
+        end
+        return "Databases: " .. table.concat(dbs, ", ")
+    end
+    
+    if message:lower():find("list tables") then
+        local tables = listTables()
+        if not tables then
+            return "No database selected. Use: 'use database mydb'"
+        end
+        if #tables == 0 then
+            return "No tables in current database. Create one with: 'create table users'"
+        end
+        return "Tables: " .. table.concat(tables, ", ")
+    end
+    
+    if message:lower():find("create table") or message:lower():find("insert data") or message:lower():find("select from") then
+        return "Database system is integrated into memory!\n\nCommands:\n• 'create database mydb'\n• 'use database mydb'\n• 'list databases'\n• 'list tables'\n\nProgrammatic use:\n• createTable('table', {schema})\n• insertData('table', {data})\n• selectData('table', conditions)\n• updateData('table', conditions, updates)\n• deleteData('table', conditions)"
+    end
+    
+    -- Check for jokes command
+    if message:lower():find("tell me a joke") or message:lower() == "joke" then
+        return responses.getJoke()
+    end
+    
+    -- Check if user needs emotional support
+    local needsSupport, emotionType = personality.needsSupport(message)
+    if needsSupport then
+        return personality.getSupportiveResponse(emotionType)
+    end
+    
+    -- Detect user activity
+    local activity = personality.detectActivity(message)
     
     local intent, entity, confidence = detectIntent(message)
     local category = detectCategory(message)
@@ -825,8 +970,65 @@ local function interpret(message, user)
     
     if intent == "math" then
         response = evaluateMath(message)
+        
+        -- NEW: Advanced math functions from utils
         if not response then
-            response = "I couldn't solve that. Try something like '5 + 3', 'sqrt 16', or '10% of 200'."
+            local lower = message:lower()
+            
+            -- Factorial
+            local n = lower:match("factorial%s+of%s+(%d+)") or lower:match("factorial%((%d+)%)")
+            if n then
+                n = tonumber(n)
+                return "Factorial of " .. n .. " = " .. utils.math.factorial(n)
+            end
+            
+            -- Fibonacci
+            n = lower:match("fibonacci%s+of%s+(%d+)") or lower:match("fibonacci%((%d+)%)") or lower:match("fib%((%d+)%)")
+            if n then
+                n = tonumber(n)
+                return "Fibonacci(" .. n .. ") = " .. utils.math.fibonacci(n)
+            end
+            
+            -- GCD
+            local a, b = lower:match("gcd%s+of%s+(%d+)%s+and%s+(%d+)") or lower:match("gcd%((%d+),%s*(%d+)%)")
+            if a and b then
+                a, b = tonumber(a), tonumber(b)
+                return "GCD of " .. a .. " and " .. b .. " = " .. utils.math.gcd(a, b)
+            end
+            
+            -- LCM
+            a, b = lower:match("lcm%s+of%s+(%d+)%s+and%s+(%d+)") or lower:match("lcm%((%d+),%s*(%d+)%)")
+            if a and b then
+                a, b = tonumber(a), tonumber(b)
+                return "LCM of " .. a .. " and " .. b .. " = " .. utils.math.lcm(a, b)
+            end
+            
+            -- Prime check
+            n = lower:match("is%s+(%d+)%s+prime") or lower:match("prime%?%s*%((%d+)%)")
+            if n then
+                n = tonumber(n)
+                local isPrime = utils.math.isPrime(n)
+                return n .. (isPrime and " is prime!" or " is not prime.")
+            end
+            
+            -- Prime factors
+            n = lower:match("prime%s+factors?%s+of%s+(%d+)") or lower:match("factor%((%d+)%)")
+            if n then
+                n = tonumber(n)
+                local factors = utils.math.primeFactors(n)
+                return "Prime factors of " .. n .. ": " .. table.concat(factors, ", ")
+            end
+            
+            -- Power
+            a, b = lower:match("(%d+)%s*%^%s*(%d+)") or lower:match("(%d+)%s+to%s+the%s+power%s+of%s+(%d+)")
+            if a and b then
+                a, b = tonumber(a), tonumber(b)
+                return a .. "^" .. b .. " = " .. utils.math.power(a, b)
+            end
+        end
+        
+        if not response then
+            response = "I couldn't solve that. Try something like '5 + 3', 'sqrt 16', 'factorial of 5', 'is 17 prime', or 'fibonacci of 10'."
         end
         
     elseif intent == "time" then
@@ -915,12 +1117,54 @@ local function interpret(message, user)
     elseif intent == "gratitude" then
         response = handleGratitude(user, message)
         personality.evolve("positive", {messageType = "general"})
+        personality.recordJokeReaction(true)
         
     elseif intent == "question" then
         response = handleQuestion(user, message, userMood)
+        personality.resetQuestionCount()
         
     else
         response = handleStatement(user, message, userMood)
+    end
+    
+    -- Add wisdom occasionally for thoughtful conversations
+    if userMood == "contemplative" and math.random() < 0.15 then
+        local wisdom = responses.getWisdom()
+        if wisdom then
+            response = response .. " " .. wisdom
+        end
+    end
+    
+    -- Add encouragement if user seems to be struggling
+    if activity == "working" and math.random() < 0.3 then
+        local encourage = responses.getEncouragement("perseverance")
+        if encourage then
+            response = response .. " " .. encourage
+        end
+    end
+    
+    -- Maybe tell a joke
+    if personality.shouldTellJoke() then
+        local joke = responses.getJoke()
+        if joke then
+            response = response .. " " .. joke
+        end
+    end
+    
+    -- Maybe ask a question
+    if personality.shouldAskQuestion() and not message:find("?") then
+        -- Choose question category based on context
+        local questionCategory = "getting_to_know"
+        if activity == "working" then
+            questionCategory = "problem_solving"
+        elseif userMood == "sad" or userMood == "anxious" then
+            questionCategory = "reflective"
+        end
+        
+        local question = personality.getQuestion(questionCategory)
+        if question then
+            response = response .. " " .. question
+        end
     end
     
     response = mood.adjustResponse(user, response)
