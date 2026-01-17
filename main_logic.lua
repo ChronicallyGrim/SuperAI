@@ -10,7 +10,7 @@ local mood = require("mood")
 local responses = require("responses")
 
 -- NEW: Advanced systems (with safe loading)
-local codeGen, dictionary, learning
+local codeGen, dictionary, learning, neuralNet, machineLearning
 
 local success, module = pcall(require, "code_generator")
 if success then 
@@ -33,6 +33,22 @@ else
     print("Warning: learning.lua not found - learning disabled")
 end
 
+success, module = pcall(require, "neural_net")
+if success then
+    neuralNet = module
+    print("Neural network loaded - AI learning enabled!")
+else
+    print("Warning: neural_net.lua not found - neural learning disabled")
+end
+
+success, module = pcall(require, "machine_learning")
+if success then
+    machineLearning = module
+    print("Machine learning loaded - pattern recognition enabled!")
+else
+    print("Warning: machine_learning.lua not found - ML features disabled")
+end
+
 -- Database is now in memory module (memory_RAID_partA.lua)
 -- Graph algorithms are now in utils.math
 
@@ -45,7 +61,7 @@ local BOT_NAME = DEFAULT_BOT_NAME
 local isTurtle = (type(turtle) == "table")
 
 -- Context window for conversation memory (like LSTM/Transformers)
-local CONTEXT_WINDOW = 15
+local CONTEXT_WINDOW = 10000
 local INTENT_CONFIDENCE_THRESHOLD = 0.6
 
 -- ============================================================================
@@ -443,22 +459,42 @@ end
 local function evaluateMath(message)
     local expr = message:lower()
     
-    -- Handle written operators
-    expr = expr:gsub("plus", "+")
-    expr = expr:gsub("minus", "-")
-    expr = expr:gsub("times", "*")
-    expr = expr:gsub("multiplied by", "*")
-    expr = expr:gsub("divided by", "/")
-    expr = expr:gsub("to the power of", "^")
-    expr = expr:gsub("squared", "^2")
+    -- Convert word numbers to digits
+    local wordNumbers = {
+        ["zero"] = "0", ["one"] = "1", ["two"] = "2", ["three"] = "3", ["four"] = "4",
+        ["five"] = "5", ["six"] = "6", ["seven"] = "7", ["eight"] = "8", ["nine"] = "9",
+        ["ten"] = "10", ["eleven"] = "11", ["twelve"] = "12", ["thirteen"] = "13",
+        ["fourteen"] = "14", ["fifteen"] = "15", ["sixteen"] = "16", ["seventeen"] = "17",
+        ["eighteen"] = "18", ["nineteen"] = "19", ["twenty"] = "20", ["thirty"] = "30",
+        ["forty"] = "40", ["fifty"] = "50", ["sixty"] = "60", ["seventy"] = "70",
+        ["eighty"] = "80", ["ninety"] = "90", ["hundred"] = "100", ["thousand"] = "1000"
+    }
     
-    -- COMPLEX MATH: Handle percentage calculations (e.g., "50% of 200")
+    for word, num in pairs(wordNumbers) do
+        expr = expr:gsub("%f[%w]" .. word .. "%f[%W]", num)
+    end
+    
+    -- Handle written operators
+    expr = expr:gsub("%f[%w]plus%f[%W]", "+")
+    expr = expr:gsub("%f[%w]add%f[%W]", "+")
+    expr = expr:gsub("%f[%w]minus%f[%W]", "-")
+    expr = expr:gsub("%f[%w]subtract%f[%W]", "-")
+    expr = expr:gsub("%f[%w]times%f[%W]", "*")
+    expr = expr:gsub("%f[%w]multiplied by%f[%W]", "*")
+    expr = expr:gsub("%f[%w]multiply%f[%W]", "*")
+    expr = expr:gsub("%f[%w]divided by%f[%W]", "/")
+    expr = expr:gsub("%f[%w]divide%f[%W]", "/")
+    expr = expr:gsub("%f[%w]to the power of%f[%W]", "^")
+    expr = expr:gsub("%f[%w]squared%f[%W]", "^2")
+    expr = expr:gsub("%f[%w]cubed%f[%W]", "^3")
+    
+    -- Handle percentage calculations
     expr = expr:gsub("([%d%.]+)%% of ([%d%.]+)", "(%1/100)*%2")
     expr = expr:gsub("([%d%.]+)%%", "(%1/100)")
 
+    -- Handle basic math functions
     local functions = {"sqrt", "sin", "cos", "tan", "abs", "log", "exp", "floor", "ceil"}
     for _, f in ipairs(functions) do
-        -- Wrap functions for Lua math library compatibility
         if f == "sin" or f == "cos" or f == "tan" then
             expr = expr:gsub(f .. " ?%(([^%)]+)%)", "math." .. f .. "(math.rad(%1))")
             expr = expr:gsub(f .. " +([%d%.]+)", "math." .. f .. "(math.rad(%1))")
@@ -469,8 +505,6 @@ local function evaluateMath(message)
     end
 
     local cleanExpr = ""
-    -- FIX: Expanded character whitelist to allow 'q', 'r', and 'l' for sqrt and log
-    -- Whitelist: numbers, basic ops, math keywords, and letters for functions
     for token in expr:gmatch("[%d%+%-%*/%%%^%.%(%)mathradsincoxtabflogepsqr%s]+") do
         cleanExpr = cleanExpr .. token
     end
@@ -884,6 +918,12 @@ LEARNING:
 • "learn this: [concept]"
 • "remember this: [fact]"
 
+AI LEARNING:
+• "train sentiment" - Train neural network
+• "analyze sentiment: [text]" - Test sentiment
+• "train from feedback" - Learn from conversations
+• "cluster conversations" - Find patterns
+
 DATABASE:
 • "create database mydb"
 • "use database mydb"
@@ -903,6 +943,16 @@ SYSTEM:
     
     safeCall(mood, "update", nil, user, message)
     local userMood = safeCall(mood, "get", "neutral", user) or "neutral"
+    
+    -- NEW: Analyze sentiment with neural network
+    if neuralNet then
+        local sentiment = neuralNet.classifySentiment(message)
+        if sentiment == "negative" and userMood ~= "sad" then
+            userMood = "concerned"
+        elseif sentiment == "positive" and userMood == "neutral" then
+            userMood = "happy"
+        end
+    end
     
     -- NEW: Code generation commands
     if codeGen and (message:lower():find("write a") or message:lower():find("create a function") or message:lower():find("generate code")) then
@@ -931,6 +981,45 @@ SYSTEM:
         if content then
             local result = learning.teach("general", content)
             return "Got it! " .. result
+        end
+    end
+    
+    -- NEW: Neural network commands
+    if neuralNet then
+        if message:lower():find("train sentiment") then
+            neuralNet.createSentimentClassifier()
+            return "Sentiment classifier trained! Try: 'analyze sentiment: I love this!'"
+        end
+        
+        if message:lower():find("analyze sentiment:") then
+            local text = message:match("analyze sentiment:%s*(.+)")
+            if text then
+                local sentiment = neuralNet.classifySentiment(text)
+                return "Sentiment: " .. sentiment
+            end
+        end
+    end
+    
+    -- NEW: Machine learning commands
+    if machineLearning and message:lower():find("cluster conversations") then
+        -- Cluster recent conversations
+        local convos = {}
+        for i = math.max(1, #memory.context - 20), #memory.context do
+            if memory.context[i] then
+                local features = {
+                    #memory.context[i].message,
+                    memory.context[i].message:find("?") and 1 or 0,
+                    memory.context[i].message:find("!") and 1 or 0
+                }
+                table.insert(convos, features)
+            end
+        end
+        
+        if #convos >= 3 then
+            local clusters = machineLearning.kmeans(convos, 3, 50)
+            return "Found " .. #clusters .. " conversation patterns!"
+        else
+            return "Need more conversations to find patterns (have " .. #convos .. ", need 3+)"
         end
     end
     
@@ -1036,75 +1125,101 @@ SYSTEM:
         if not response and utils and utils.math then
             local lower = message:lower()
             
-            -- Factorial
-            local n = lower:match("factorial%s+of%s+(%d+)") or lower:match("factorial%((%d+)%)")
-            if n then
-                n = tonumber(n)
-                local result = utils.math.factorial(n)
-                return "Factorial of " .. n .. " = " .. result
+            -- Convert word numbers to digits for advanced math
+            local wordNumbers = {
+                ["zero"] = "0", ["one"] = "1", ["two"] = "2", ["three"] = "3", ["four"] = "4",
+                ["five"] = "5", ["six"] = "6", ["seven"] = "7", ["eight"] = "8", ["nine"] = "9",
+                ["ten"] = "10", ["eleven"] = "11", ["twelve"] = "12", ["thirteen"] = "13",
+                ["fourteen"] = "14", ["fifteen"] = "15", ["sixteen"] = "16", ["seventeen"] = "17",
+                ["eighteen"] = "18", ["nineteen"] = "19", ["twenty"] = "20", ["thirty"] = "30",
+                ["forty"] = "40", ["fifty"] = "50", ["sixty"] = "60", ["seventy"] = "70",
+                ["eighty"] = "80", ["ninety"] = "90", ["hundred"] = "100"
+            }
+            
+            for word, num in pairs(wordNumbers) do
+                lower = lower:gsub("%f[%w]" .. word .. "%f[%W]", num)
             end
             
-            -- Fibonacci
-            n = lower:match("fibonacci%s+of%s+(%d+)") or lower:match("fibonacci%((%d+)%)") or lower:match("fib%((%d+)%)")
+            -- Factorial - works as: "factorial 5", "factorial of 5", "factorial(5)"
+            local n = lower:match("factorial%s+(%d+)") or lower:match("factorial%s+of%s+(%d+)") or lower:match("factorial%((%d+)%)")
             if n then
                 n = tonumber(n)
-                local result = utils.math.fibonacci(n)
-                return "Fibonacci(" .. n .. ") = " .. result
+                if n and n <= 170 then
+                    local result = utils.math.factorial(n)
+                    return "Factorial of " .. n .. " = " .. result
+                else
+                    return "Number too large for factorial (max 170)"
+                end
             end
             
-            -- GCD
-            local a, b = lower:match("gcd%s+of%s+(%d+)%s+and%s+(%d+)")
-            if not a then
-                a, b = lower:match("gcd%((%d+),%s*(%d+)%)")
+            -- Fibonacci - works as: "fibonacci 10", "fibonacci of 10", "fib(10)"
+            n = lower:match("fibonacci%s+(%d+)") or lower:match("fibonacci%s+of%s+(%d+)") or 
+                lower:match("fibonacci%((%d+)%)") or lower:match("fib%((%d+)%)") or lower:match("fib%s+(%d+)")
+            if n then
+                n = tonumber(n)
+                if n and n <= 50 then
+                    local result = utils.math.fibonacci(n)
+                    return "Fibonacci(" .. n .. ") = " .. result
+                else
+                    return "Number too large for fibonacci (max 50)"
+                end
             end
+            
+            -- GCD - works as: "gcd 48 18", "gcd of 48 and 18", "gcd(48,18)"
+            local a, b = lower:match("gcd%s+(%d+)%s+(%d+)") or lower:match("gcd%s+of%s+(%d+)%s+and%s+(%d+)") or
+                         lower:match("gcd%((%d+),%s*(%d+)%)")
             if a and b then
                 a, b = tonumber(a), tonumber(b)
                 local result = utils.math.gcd(a, b)
                 return "GCD of " .. a .. " and " .. b .. " = " .. result
             end
             
-            -- LCM
-            a, b = lower:match("lcm%s+of%s+(%d+)%s+and%s+(%d+)")
-            if not a then
-                a, b = lower:match("lcm%((%d+),%s*(%d+)%)")
-            end
+            -- LCM - works as: "lcm 12 18", "lcm of 12 and 18", "lcm(12,18)"
+            a, b = lower:match("lcm%s+(%d+)%s+(%d+)") or lower:match("lcm%s+of%s+(%d+)%s+and%s+(%d+)") or
+                   lower:match("lcm%((%d+),%s*(%d+)%)")
             if a and b then
                 a, b = tonumber(a), tonumber(b)
                 local result = utils.math.lcm(a, b)
                 return "LCM of " .. a .. " and " .. b .. " = " .. result
             end
             
-            -- Prime check
-            n = lower:match("is%s+(%d+)%s+prime")
-            if not n then
-                n = lower:match("prime%?%s*%((%d+)%)")
-            end
+            -- Prime check - works as: "is 17 prime", "prime 17", "prime(17)"
+            n = lower:match("is%s+(%d+)%s+prime") or lower:match("prime%s+(%d+)") or
+                lower:match("prime%((%d+)%)") or lower:match("(%d+)%s+prime")
             if n then
                 n = tonumber(n)
-                local isPrime = utils.math.isPrime(n)
-                return n .. (isPrime and " is prime!" or " is not prime.")
+                if n and n <= 1000000 then
+                    local isPrime = utils.math.isPrime(n)
+                    return n .. (isPrime and " is prime!" or " is not prime.")
+                else
+                    return "Number too large for prime check (max 1000000)"
+                end
             end
             
-            -- Prime factors
-            n = lower:match("prime%s+factors?%s+of%s+(%d+)")
-            if not n then
-                n = lower:match("factor%((%d+)%)")
-            end
+            -- Prime factors - works as: "prime factors 60", "prime factors of 60", "factor(60)"
+            n = lower:match("prime%s+factors?%s+(%d+)") or lower:match("prime%s+factors?%s+of%s+(%d+)") or
+                lower:match("factors?%s+of%s+(%d+)") or lower:match("factors?%((%d+)%)")
             if n then
                 n = tonumber(n)
-                local factors = utils.math.primeFactors(n)
-                return "Prime factors of " .. n .. ": " .. table.concat(factors, ", ")
+                if n and n <= 10000 then
+                    local factors = utils.math.primeFactors(n)
+                    return "Prime factors of " .. n .. ": " .. table.concat(factors, ", ")
+                else
+                    return "Number too large for factorization (max 10000)"
+                end
             end
             
-            -- Power
-            a, b = lower:match("(%d+)%s*%^%s*(%d+)")
-            if not a then
-                a, b = lower:match("(%d+)%s+to%s+the%s+power%s+of%s+(%d+)")
-            end
+            -- Power - works as: "2^10", "2 to the power of 10", "power(2,10)"
+            a, b = lower:match("(%d+)%s*%^%s*(%d+)") or lower:match("(%d+)%s+to%s+the%s+power%s+of%s+(%d+)") or
+                   lower:match("power%((%d+),%s*(%d+)%)")
             if a and b then
                 a, b = tonumber(a), tonumber(b)
-                local result = utils.math.power(a, b)
-                return a .. "^" .. b .. " = " .. result
+                if a and b and b <= 100 then
+                    local result = utils.math.power(a, b)
+                    return a .. "^" .. b .. " = " .. result
+                else
+                    return "Exponent too large (max 100)"
+                end
             end
         end
         
