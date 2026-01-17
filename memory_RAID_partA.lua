@@ -38,14 +38,14 @@ local function updateMood(change)
         memory.mood = "neutral"
     end
     table.insert(memory.moodHistory, memory.mood)
-    if #memory.moodHistory > 20 then table.remove(memory.moodHistory, 1) end
+    if #memory.moodHistory > 1000 then table.remove(memory.moodHistory, 1) end
 end
 
 -- ===== CONTEXT TRACKING =====
 
 local function rememberContext(user, message, category)
     table.insert(memory.context, {user=user, message=message, category=category, mood=memory.mood})
-    if #memory.context > 10 then table.remove(memory.context, 1) end
+    if #memory.context > 10000 then table.remove(memory.context, 1) end
 end
 
 -- ===== FAVORITE TOPICS TRACKING =====
@@ -185,7 +185,7 @@ end
 memory.context = memory.context or {}
 
 -- Store last N interactions
-local MAX_CONTEXT = 8
+local MAX_CONTEXT = 10000000
 local function updateContext(user, message, response, category)
     table.insert(memory.context, {
         user = user,
@@ -398,7 +398,7 @@ end
 -- ===== MULTI-TURN MEMORY =====
 
 -- Stores last N exchanges to provide context in conversation
-local MAX_CONTEXT = 10
+local MAX_CONTEXT = 10000
 local function updateConversationContext(user, message, response, mood)
     table.insert(memory.context, {user=user, message=message, response=response, mood=mood, timestamp=os.time()})
     if #memory.context > MAX_CONTEXT then
@@ -474,7 +474,7 @@ end
 -- ===== MEMORY CLEANUP & OPTIMIZATION =====
 
 -- Ensures long-term memory does not grow indefinitely
-local MAX_LEARNED = 500
+local MAX_LEARNED = 100000
 local function cleanupMemory()
     local learnedCount = 0
     for _,entry in pairs(memory.learned) do
@@ -562,7 +562,7 @@ end
 -- Tracks conversation history to improve continuity
 memory.contextHistory = memory.contextHistory or {}
 
-local CONTEXT_LIMIT = 20 -- number of messages to remember
+local CONTEXT_LIMIT = 10000 -- number of messages to remember
 
 local function updateContextHistory(user, message, response, category)
     table.insert(memory.contextHistory, {
@@ -1358,7 +1358,7 @@ local function addContextEvent(user, message, response)
     })
     
     -- Keep only the last N interactions to prevent memory overload
-    local MAX_CONTEXT_EVENTS = 50
+    local MAX_CONTEXT_EVENTS = 10000
     if #memory.contextualMemory > MAX_CONTEXT_EVENTS then
         table.remove(memory.contextualMemory, 1)
     end
@@ -2270,7 +2270,7 @@ end
 
 
 -- Extend memory context capacity
-local MAX_CONTEXT_LENGTH = 20 -- store last 20 interactions for richer context
+local MAX_CONTEXT_LENGTH = 10000 -- store last 20 interactions for richer context
 
 -- Add message to context with user and timestamp
 local function addToContext(user, message, category, response)
@@ -2913,7 +2913,7 @@ end
 
 
 -- Maximum number of context entries to remember
-local MAX_CONTEXT = 20
+local MAX_CONTEXT = 10000
 
 -- Extend context structure to include mood, timestamp, and user intent
 local function addToContext(user, message, response, category, intent)
@@ -3141,7 +3141,7 @@ end
 
 
 -- Maximum number of recent messages to store
-local CONTEXT_LIMIT = 8
+local CONTEXT_LIMIT = 10000
 
 -- Add a message to the conversation context
 local function addToContext(user, message, response, category)
