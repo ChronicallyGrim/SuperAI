@@ -1220,6 +1220,83 @@ The mega train option generates 10,000 conversations automatically!]]
         end
     end
     
+    -- NEW: Files menu - check what's installed (COMPACT)
+    if message:lower():find("files menu") or message:lower():find("system check") or message:lower():find("what's installed") then
+        local issues = {}
+        
+        -- Quick check of critical modules
+        if not markov then table.insert(issues, "markov") end
+        if not embeddings then table.insert(issues, "embeddings") end
+        if not attention then table.insert(issues, "attention") end
+        
+        if #issues == 0 then
+            return [[System Status: ✓ All modules loaded!
+
+Core: utils, mood, personality, responses
+Advanced: markov, embeddings, attention, memory_search, rlhf
+Neural: 610K param network ready
+Training: Use "training menu"
+
+Say "check drives" to see file locations]]
+        else
+            local missing = table.concat(issues, ", ")
+            return string.format([[System Status: ⚠ Issues detected
+
+Missing modules: %s
+
+To fix:
+1. Say "check drives" - See what's installed
+2. Say "fix modules" - Get repair instructions
+3. Or re-run installer]], missing)
+        end
+    end
+    
+    -- NEW: Check drives command (COMPACT)
+    if message:lower():find("check drives") then
+        local report = {}
+        table.insert(report, "Drive Contents:")
+        table.insert(report, "")
+        
+        local drives = {
+            {"TOP (disk2)", "disk2"},
+            {"LEFT (disk5)", "disk5"},
+            {"RIGHT (disk4)", "disk4"}
+        }
+        
+        for _, drive in ipairs(drives) do
+            if fs.exists(drive[2]) and fs.isDir(drive[2]) then
+                local files = fs.list(drive[2])
+                local count = 0
+                for _ in pairs(files) do count = count + 1 end
+                table.insert(report, drive[1] .. ": " .. count .. " files")
+            end
+        end
+        
+        table.insert(report, "")
+        table.insert(report, "Say 'list disk2' to see TOP drive files")
+        table.insert(report, "Say 'list disk5' to see LEFT drive files")
+        
+        return table.concat(report, "\n")
+    end
+    
+    -- List specific drive
+    if message:lower():find("list disk%d") then
+        local disk = message:match("disk(%d)")
+        local path = "disk" .. disk
+        
+        if fs.exists(path) and fs.isDir(path) then
+            local files = fs.list(path)
+            local list = {}
+            table.insert(list, "Files on " .. path .. ":")
+            for _, file in ipairs(files) do
+                table.insert(list, "• " .. file)
+            end
+            return table.concat(list, "\n")
+        else
+            return "Drive disk" .. disk .. " not found"
+        end
+    end
+    
     -- NEW: Quick inline training commands
     if message:lower():find("quick train") then
         return M.runAutoTraining(100)
