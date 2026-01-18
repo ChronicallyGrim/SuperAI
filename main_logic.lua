@@ -887,6 +887,130 @@ local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
     
+    -- NEW: Handle status responses ("im good", "im fine", "not bad", etc.)
+    local msg_lower = message:lower()
+    if (msg_lower:find("^i'?m ") or msg_lower:find("^im ")) and #message < 25 then
+        if msg_lower:find("good") or msg_lower:find("fine") or msg_lower:find("alright") or 
+           msg_lower:find("ok") or msg_lower:find("okay") then
+            
+            -- Check if AI just asked "how are you" in previous message
+            local history = getContextualHistory(user, 1)
+            local just_asked_how = false
+            if history and #history > 0 then
+                local last_ai = history[1].response or ""
+                if last_ai:lower():find("how are you") or last_ai:lower():find("how about you") or 
+                   last_ai:lower():find("how's it going") or last_ai:lower():find("what about you") then
+                    just_asked_how = true
+                end
+            end
+            
+            if just_asked_how then
+                -- AI asked, user answered - acknowledge naturally
+                local responses = {
+                    "Nice!",
+                    "Cool cool.",
+                    "Good to hear!",
+                    "Sweet!",
+                    "That's good!",
+                    "Awesome.",
+                    "Right on!",
+                    "Good stuff!",
+                }
+                return utils.choose(responses)
+            else
+                -- User volunteered their status - show interest
+                local responses = {
+                    "Nice! What's been going on?",
+                    "Cool! Anything interesting happening?",
+                    "Sweet! What are you up to?",
+                    "Good to hear! What's on your mind?",
+                }
+                return utils.choose(responses)
+            end
+        end
+        
+        if msg_lower:find("great") or msg_lower:find("awesome") or msg_lower:find("amazing") or
+           msg_lower:find("fantastic") then
+            local responses = {
+                "Hell yeah!",
+                "That's awesome!",
+                "Love to hear it!",
+                "Nice!",
+                "That's what I like to hear!",
+            }
+            return utils.choose(responses)
+        end
+        
+        if msg_lower:find("bad") or msg_lower:find("not great") or msg_lower:find("meh") or
+           msg_lower:find("tired") or msg_lower:find("stressed") then
+            local responses = {
+                "Aw man, what's up?",
+                "Sorry to hear that. What's going on?",
+                "That sucks. Want to talk about it?",
+                "Ah, rough day? What happened?",
+                "Damn. Everything okay?",
+            }
+            return utils.choose(responses)
+        end
+    end
+    
+    -- Handle very short responses ("yeah", "nah", "cool", etc.)
+    if #message < 8 then
+        -- Check context for these too
+        local history = getContextualHistory(user, 1)
+        local last_ai = history and #history > 0 and (history[1].response or "") or ""
+        local was_question = last_ai:find("?") ~= nil
+        
+        if msg_lower:find("^yeah") or msg_lower:find("^yup") or msg_lower:find("^yes") then
+            if was_question then
+                local responses = {
+                    "Cool.",
+                    "Gotcha.",
+                    "Alright.",
+                    "Nice.",
+                }
+                return utils.choose(responses)
+            else
+                local responses = {
+                    "For sure.",
+                    "Right?",
+                    "Totally.",
+                    "I know!",
+                }
+                return utils.choose(responses)
+            end
+        end
+        
+        if msg_lower:find("^nah") or msg_lower:find("^nope") or msg_lower:find("^no") then
+            if was_question then
+                local responses = {
+                    "Fair enough.",
+                    "Gotcha.",
+                    "Okay cool.",
+                    "Alright.",
+                }
+                return utils.choose(responses)
+            else
+                local responses = {
+                    "Nah for real.",
+                    "Right?",
+                    "Yeah I feel that.",
+                }
+                return utils.choose(responses)
+            end
+        end
+        
+        if msg_lower:find("^cool") or msg_lower:find("^nice") or msg_lower:find("^sweet") then
+            local responses = {
+                "Right?",
+                "Yeah!",
+                "For sure!",
+                "I know!",
+            }
+            return utils.choose(responses)
+        end
+    end
+    
     if #message < 10 and #keywords == 0 then
         local shortResponseCount = 0
         local history = getContextualHistory(user, 3)
@@ -1938,11 +2062,18 @@ function M.runAutoTraining(num_conversations)
             -- More frequent saves for massive training
             if variations_to_add > 10000 and i % 500 == 0 then
                 markov.save()
+                print("  [Auto-saved at " .. i .. " conversations]")
             end
             
-            -- Periodic sleeps to prevent lag
-            if i % 200 == 0 then
-                os.sleep(0.05)
+            -- CRITICAL: Actual delays to make training take time
+            -- Without this, it runs instantly!
+            if i % 10 == 0 then
+                os.sleep(0.1)  -- Sleep every 10 conversations
+            end
+            
+            -- Extra sleep for massive training to slow it down
+            if variations_to_add > 10000 and i % 50 == 0 then
+                os.sleep(0.5)  -- Extra pause for massive training
             end
         end
     end
