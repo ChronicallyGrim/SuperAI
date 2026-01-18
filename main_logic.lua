@@ -1175,6 +1175,61 @@ SYSTEM:
         end
     end
     
+    -- NEW: Quick training commands
+    if message:lower():find("train yourself") or message:lower():find("auto train") or message:lower():find("train me") then
+        return [[I can help you train me! Here are the training programs:
+
+QUICK TRAINING (in chat):
+• Say "train from examples" - I'll guide you through teaching me
+
+ADVANCED TRAINING (external programs):
+Run these from the command prompt (type 'quit' first):
+• ai_vs_ai - Two AIs talk to train me (FASTEST!)
+• auto_trainer - Template-based training
+• easy_trainer - You teach me manually
+• neural_trainer - Train my neural network
+
+The ai_vs_ai program is recommended - it generates 10,000 conversations in minutes!]]
+    end
+    
+    -- NEW: Interactive training in chat
+    if message:lower():find("train from examples") then
+        return [[Great! Let's do some training. Tell me example conversations like this:
+
+"User says: hello"
+"I should reply: Hi there! How are you?"
+
+Give me a few examples and I'll learn from them!]]
+    end
+    
+    -- Process training examples
+    if message:lower():find("user says:") and message:lower():find("i should reply:") then
+        local user_part = message:match("[Uu]ser says:%s*(.-)%s*[Ii] should")
+        local ai_part = message:match("[Ii] should reply:%s*(.+)")
+        
+        if user_part and ai_part and markov then
+            markov.train(user_part, 1)
+            markov.train(user_part, 2)
+            markov.train(ai_part, 1)
+            markov.train(ai_part, 2)
+            markov.save()
+            
+            return "Got it! I learned that pattern. Give me more examples or say 'done training' when finished."
+        else
+            return "Format: User says: [message] I should reply: [response]"
+        end
+    end
+    
+    if message:lower():find("done training") then
+        if markov then
+            markov.save()
+            local stats = markov.getStats()
+            return "Training saved! I now have " .. stats.total_sequences .. " learned patterns. Thanks for teaching me!"
+        else
+            return "Training complete!"
+        end
+    end
+    
     -- NEW: Graph/pathfinding commands
     if message:lower():find("find path") or message:lower():find("shortest route") then
         return "I can help with pathfinding! Graph algorithms are built into my utils system.\nUse: utils.Graph.new() to create graphs, then findPath() or shortestPath()"
