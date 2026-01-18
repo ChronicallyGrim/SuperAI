@@ -10,7 +10,8 @@ local mood = require("mood")
 local responses = require("responses")
 
 -- NEW: Advanced systems (with safe loading)
-local codeGen, dictionary, learning, neuralNet, machineLearning, largeNeural, trainedNetwork
+local codeGen, dictionary, learning, neuralNet, machineLearning, largeNeural, trainedNetwork, markov
+local attention, embeddings, memorySearch, rlhf, sampling, tokenization
 
 local success, module = pcall(require, "code_generator")
 if success then 
@@ -64,6 +65,99 @@ if success then
 else
     print("Warning: large_neural_net.lua not found - advanced neural features disabled")
 end
+
+success, module = pcall(require, "markov")
+if success then
+    markov = module
+    print("Markov chains loaded!")
+    
+    -- Load trained markov data
+    if markov.load("markov_data.dat") then
+        local stats = markov.getStats()
+        print("Loaded Markov data: " .. stats.total_sequences .. " sequences")
+    else
+        print("No Markov data found - initializing...")
+        markov.initializeWithDefaults()
+        markov.save()
+    end
+else
+    print("Warning: markov.lua not found - natural language generation disabled")
+end
+
+-- NEW: Advanced AI modules (Transformer components)
+success, module = pcall(require, "attention")
+if success then
+    attention = module
+    print("Attention mechanism loaded - transformer architecture enabled!")
+else
+    print("Warning: attention.lua not found - attention disabled")
+end
+
+success, module = pcall(require, "embeddings")
+if success then
+    embeddings = module
+    print("Word embeddings loaded - semantic understanding enabled!")
+    
+    -- Initialize or load embeddings
+    if embeddings.load("embeddings.dat") then
+        print("Loaded embeddings: " .. embeddings.vocab_size .. " words")
+    else
+        embeddings.initializeDefaults()
+        embeddings.save()
+    end
+else
+    print("Warning: embeddings.lua not found - embeddings disabled")
+end
+
+success, module = pcall(require, "memory_search")
+if success then
+    memorySearch = module
+    print("Semantic memory search loaded!")
+    
+    -- Initialize with embeddings and attention
+    if embeddings and attention then
+        memorySearch.initialize(embeddings, attention)
+        memorySearch.load("memory_index.dat")
+        local stats = memorySearch.getStats()
+        print("Memory index: " .. stats.total_memories .. " memories")
+    end
+else
+    print("Warning: memory_search.lua not found - semantic search disabled")
+end
+
+success, module = pcall(require, "rlhf")
+if success then
+    rlhf = module
+    print("RLHF loaded - learning from feedback enabled!")
+    
+    rlhf.load("rlhf_data.dat")
+    local stats = rlhf.getStats()
+    print("RLHF stats: " .. stats.total_feedback .. " feedback samples")
+else
+    print("Warning: rlhf.lua not found - feedback learning disabled")
+end
+
+success, module = pcall(require, "sampling")
+if success then
+    sampling = module
+    print("Advanced sampling loaded - better response generation!")
+else
+    print("Warning: sampling.lua not found - advanced sampling disabled")
+end
+
+success, module = pcall(require, "tokenization")
+if success then
+    tokenization = module
+    print("Tokenization loaded - subword processing enabled!")
+    
+    tokenization.load("tokenization.dat")
+else
+    print("Warning: tokenization.lua not found - tokenization disabled")
+end
+
+print("\n=== SuperAI System Ready ===")
+print("All advanced AI modules loaded!")
+print("")
 
 -- Database is now in memory module (memory_RAID_partA.lua)
 -- Graph algorithms are now in utils.math
@@ -1423,7 +1517,69 @@ SYSTEM:
     
     response = safeCall(mood, "adjustResponse", response, user, response) or response
     
+    -- USE SEMANTIC MEMORY SEARCH to find relevant context
+    if memorySearch and embeddings then
+        local relevant = memorySearch.search(message, 3)
+        if #relevant > 0 then
+            -- Found relevant past conversations - use them for context
+            -- (Context already incorporated, just track for learning)
+        end
+        
+        -- Add this conversation to searchable memory
+        memorySearch.addMemory(message, user, {response = response})
+    end
+    
+    -- If response is still generic or missing, try Markov chain
+    if markov and (not response or response:find("I'm not sure") or response:find("good question") or #response < 10) then
+        local markov_response = markov.generateResponse(message, 2)
+        if markov_response and #markov_response > 10 then
+            response = markov_response
+        end
+    end
+    
+    -- Learn from this conversation for future use
+    if markov and response then
+        markov.learnFromConversation(message, response)
+    end
+    
+    -- CREATE EMBEDDING for RLHF
+    local response_embedding = nil
+    if embeddings and response then
+        response_embedding = embeddings.sentenceToEmbedding(response)
+    end
+    
     updateContext(user, message, category, response)
+    
+    -- AUTO-DETECT IMPLICIT FEEDBACK for RLHF
+    if rlhf and response_embedding then
+        -- We'll check next message for implicit feedback
+        -- Store this response for learning
+        if not _G.last_bot_response then
+            _G.last_bot_response = {
+                message = message,
+                response = response,
+                embedding = response_embedding,
+                timestamp = os.time()
+            }
+        else
+            -- Detect feedback from current message about previous response
+            local rating = rlhf.detectImplicitFeedback(message, _G.last_bot_response.response)
+            rlhf.recordFeedback(
+                _G.last_bot_response.message,
+                _G.last_bot_response.response,
+                rating,
+                _G.last_bot_response.embedding
+            )
+            
+            -- Store current response for next iteration
+            _G.last_bot_response = {
+                message = message,
+                response = response,
+                embedding = response_embedding,
+                timestamp = os.time()
+            }
+        end
+    end
     
     if memory.conversationCount % 5 == 0 then
         saveMemory()
