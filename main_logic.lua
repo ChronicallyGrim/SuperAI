@@ -889,23 +889,50 @@ local function handleStatement(user, message, userMood)
     
     -- NEW: Handle status responses ("im good", "im fine", "not bad", etc.)
     local msg_lower = message:lower()
+    
+    -- Catch "its going good/fine/okay"
+    if msg_lower:find("going") and (msg_lower:find("good") or msg_lower:find("fine") or 
+       msg_lower:find("well") or msg_lower:find("alright") or msg_lower:find("okay")) then
+        
+        local history = getContextualHistory(user, 1)
+        local just_asked_how = false
+        if history and #history > 0 then
+            local last_ai = history[1].response or ""
+            if last_ai:lower():find("how") or last_ai:lower():find("what's up") or 
+               last_ai:lower():find("whats up") then
+                just_asked_how = true
+            end
+        end
+        
+        if just_asked_how then
+            local responses = {
+                "Nice!",
+                "Cool cool.",
+                "Good to hear!",
+                "Sweet!",
+                "That's good!",
+                "Awesome.",
+            }
+            return utils.choose(responses)
+        end
+    end
+    
+    -- Catch "im good/fine/okay"
     if (msg_lower:find("^i'?m ") or msg_lower:find("^im ")) and #message < 25 then
         if msg_lower:find("good") or msg_lower:find("fine") or msg_lower:find("alright") or 
            msg_lower:find("ok") or msg_lower:find("okay") then
             
-            -- Check if AI just asked "how are you" in previous message
             local history = getContextualHistory(user, 1)
             local just_asked_how = false
             if history and #history > 0 then
                 local last_ai = history[1].response or ""
-                if last_ai:lower():find("how are you") or last_ai:lower():find("how about you") or 
-                   last_ai:lower():find("how's it going") or last_ai:lower():find("what about you") then
+                if last_ai:lower():find("how") or last_ai:lower():find("what about you") or
+                   last_ai:lower():find("and you") then
                     just_asked_how = true
                 end
             end
             
             if just_asked_how then
-                -- AI asked, user answered - acknowledge naturally
                 local responses = {
                     "Nice!",
                     "Cool cool.",
@@ -913,12 +940,9 @@ local function handleStatement(user, message, userMood)
                     "Sweet!",
                     "That's good!",
                     "Awesome.",
-                    "Right on!",
-                    "Good stuff!",
                 }
                 return utils.choose(responses)
             else
-                -- User volunteered their status - show interest
                 local responses = {
                     "Nice! What's been going on?",
                     "Cool! Anything interesting happening?",
@@ -936,7 +960,6 @@ local function handleStatement(user, message, userMood)
                 "That's awesome!",
                 "Love to hear it!",
                 "Nice!",
-                "That's what I like to hear!",
             }
             return utils.choose(responses)
         end
@@ -947,19 +970,30 @@ local function handleStatement(user, message, userMood)
                 "Aw man, what's up?",
                 "Sorry to hear that. What's going on?",
                 "That sucks. Want to talk about it?",
-                "Ah, rough day? What happened?",
                 "Damn. Everything okay?",
             }
             return utils.choose(responses)
         end
     end
     
-    -- Handle very short responses ("yeah", "nah", "cool", etc.)
-    if #message < 8 then
-        -- Check context for these too
+    -- Handle very short responses ("yeah", "nah", "cool", "not much", etc.)
+    if #message <= 15 then
         local history = getContextualHistory(user, 1)
         local last_ai = history and #history > 0 and (history[1].response or "") or ""
         local was_question = last_ai:find("?") ~= nil
+        
+        -- "not much" / "nothing much"
+        if msg_lower:find("not much") or msg_lower:find("nothing much") or msg_lower:find("nm") then
+            if was_question then
+                local responses = {
+                    "Fair enough.",
+                    "Gotcha.",
+                    "All good.",
+                    "Cool cool.",
+                }
+                return utils.choose(responses)
+            end
+        end
         
         if msg_lower:find("^yeah") or msg_lower:find("^yup") or msg_lower:find("^yes") then
             if was_question then
