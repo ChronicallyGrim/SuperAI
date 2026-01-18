@@ -887,6 +887,22 @@ local function handleStatement(user, message, userMood)
     local category = detectCategory(message)
     local keywords = utils.extractKeywords(message)
     
+    -- CRITICAL: Override mood for clearly positive single-word responses
+    local msg_lower = message:lower():gsub("[%p]", "")
+    local positive_words = {
+        "awesome", "great", "cool", "nice", "sweet", "perfect", "excellent", 
+        "amazing", "fantastic", "wonderful", "brilliant", "love", "yes", "yeah"
+    }
+    
+    if #message < 20 then
+        for _, word in ipairs(positive_words) do
+            if msg_lower == word or msg_lower:find("^" .. word .. "$") then
+                userMood = "positive"  -- Force positive mood
+                break
+            end
+        end
+    end
+    
     -- NEW: Handle status responses ("im good", "im fine", "not bad", etc.)
     local msg_lower = message:lower()
     
