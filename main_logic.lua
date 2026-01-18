@@ -1397,13 +1397,21 @@ The mega train option generates 10,000 conversations automatically!]]
     -- NEW: Training menu
     if message:lower():find("training menu") then
         print("\n=== Training Menu ===")
+        print("")
+        print("BASIC TRAINING (Template-based):")
         print("1. Quick Train (100 conversations) - 30 seconds")
         print("2. Medium Train (500 conversations) - 2 minutes")
         print("3. Mega Train (2000 conversations) - 5 minutes")
-        print("4. Ultra Train (10,000 conversations) - 30 minutes")
-        print("5. MASSIVE Train (50,000 conversations) - 2-3 HOURS")
-        print("6. Train from examples (manual)")
-        print("7. Back to chat")
+        print("")
+        print("ADVANCED TRAINING (Self-Learning AI System):")
+        print("4. AI Trainer - Quick (500 AI convos) - 2 minutes ⭐")
+        print("5. AI Trainer - Standard (2,000 AI convos) - 5 minutes ⭐⭐")
+        print("6. AI Trainer - Deep (10,000 AI convos) - 20 minutes")
+        print("7. AI Trainer - ULTIMATE (50,000 AI convos) - 2 HOURS")
+        print("")
+        print("OTHER OPTIONS:")
+        print("8. Train from examples (manual)")
+        print("9. Back to chat")
         print("")
         write("Choice: ")
         
@@ -1418,30 +1426,41 @@ The mega train option generates 10,000 conversations automatically!]]
             print("Starting mega training... this will take a few minutes!")
             return M.runAutoTraining(2000)
         elseif choice == "4" then
-            print("Starting ULTRA training... this will take about 30 minutes!")
-            print("You can leave your computer and come back - I'll keep training!")
-            return M.runAutoTraining(10000)
+            -- Quick AI training
+            return M.runAdvancedAITraining(500)
         elseif choice == "5" then
-            print("=== WARNING: MASSIVE TRAINING ===")
-            print("This will take 2-3 HOURS to complete!")
-            print("Your AI will learn 50,000+ conversation patterns.")
-            print("Leave your computer running and come back later.")
+            -- Standard AI training (RECOMMENDED)
+            return M.runAdvancedAITraining(2000)
+        elseif choice == "6" then
+            -- Deep AI training
+            print("Deep AI training will take about 20 minutes...")
+            write("Continue? (y/n): ")
+            if read():lower() == "y" then
+                return M.runAdvancedAITraining(10000)
+            else
+                return "Cancelled. Say 'training menu' to choose another option."
+            end
+        elseif choice == "7" then
+            -- ULTIMATE AI training
+            print("=== WARNING: ULTIMATE AI TRAINING ===")
+            print("This will take 1-2 HOURS to complete!")
+            print("Two self-learning AIs will have 50,000 conversations.")
+            print("Your SuperAI will become incredibly intelligent!")
             print("")
-            write("Are you sure? Type YES to confirm: ")
+            write("Type YES to confirm: ")
             local confirm = read()
             if confirm:upper() == "YES" then
                 print("")
-                print("Starting MASSIVE training session...")
-                print("Estimated time: 2-3 hours")
-                print("Training will auto-save every 100 conversations")
+                print("Starting ULTIMATE AI training...")
+                print("Leave your computer running. Progress will be displayed.")
                 print("")
-                return M.runAutoTraining(50000)
+                return M.runAdvancedAITraining(50000)
             else
-                return "MASSIVE training cancelled. Say 'training menu' to choose another option."
+                return "ULTIMATE training cancelled. Say 'training menu' to choose another option."
             end
-        elseif choice == "6" then
+        elseif choice == "8" then
             return "Great! Tell me examples like: User says: hello / I should reply: Hi there!"
-        elseif choice == "7" then
+        elseif choice == "9" then
             return "Back to chatting! What would you like to talk about?"
         else
             return "Invalid choice. Say 'training menu' to try again."
@@ -2199,6 +2218,70 @@ function M.runAutoTraining(num_conversations)
     print("")
     
     return string.format("I'm much smarter now! I learned %d rich conversation patterns. Try talking to me - I should be way more interesting!", total_trained)
+end
+
+-- ============================================================================
+-- ADVANCED AI TRAINING FUNCTION
+-- ============================================================================
+
+function M.runAdvancedAITraining(num_conversations)
+    -- Load advanced trainer module
+    local success, advanced_trainer = pcall(require, "advanced_ai_trainer")
+    if not success then
+        print("ERROR: advanced_ai_trainer.lua not found!")
+        print("Make sure it's installed on disk2 (TOP drive)")
+        print("")
+        return "Advanced AI trainer not available. Use basic training instead."
+    end
+    
+    -- Load context markov
+    local success2, context_markov = pcall(require, "context_markov")
+    if not success2 then
+        print("ERROR: context_markov.lua not found!")
+        print("Make sure it's installed on disk2 (TOP drive)")
+        print("")
+        return "Context-aware Markov not available."
+    end
+    
+    print("=== ADVANCED AI TRAINING ===")
+    print("")
+    print("Phase 1: Self-learning AIs will have " .. num_conversations .. " conversations")
+    print("Phase 2: Extract context-aware patterns")
+    print("Phase 3: Train your SuperAI")
+    print("")
+    
+    -- Run the training
+    local result = advanced_trainer.createAdvancedTrainingSession({
+        conversations = num_conversations,
+        turns = 10,
+        save_interval = 100
+    })
+    
+    print("")
+    print("=== IMPORTING TO CONTEXT MARKOV ===")
+    print("")
+    
+    -- Import to context-aware Markov
+    local imported = context_markov.importFromTrainingLog("/training/conversation_log.dat")
+    context_markov.save("context_markov.dat")
+    
+    -- Reload context markov with new data
+    if contextMarkov then
+        contextMarkov.load("context_markov.dat")
+    end
+    
+    print("")
+    print("=== TRAINING COMPLETE ===")
+    print("")
+    local stats = context_markov.getStats()
+    print(string.format("Results:"))
+    print(string.format("  AI Conversations: %d", result.exchanges))
+    print(string.format("  Patterns Learned: %d", imported))
+    print(string.format("  Unique Contexts: %d", stats.contexts))
+    print(string.format("  Total Patterns: %d", stats.total_patterns))
+    print("")
+    
+    return string.format("Advanced training complete! I learned %d context-aware patterns from %d AI conversations. I'm much smarter now!", stats.total_patterns, result.exchanges)
 end
 
 -- ============================================================================
