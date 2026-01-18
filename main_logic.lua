@@ -97,6 +97,23 @@ else
     print("Warning: markov.lua not found - natural language generation disabled")
 end
 
+-- NEW: Context-Aware Markov (smart, contextual responses)
+local contextMarkov = nil
+success, module = pcall(require, "context_markov")
+if success then
+    contextMarkov = module
+    
+    -- Try to load trained context-aware data
+    if contextMarkov.load("context_markov.dat") then
+        local stats = contextMarkov.getStats()
+        print("Context-Aware Markov loaded: " .. stats.total_patterns .. " patterns in " .. stats.contexts .. " contexts!")
+    else
+        print("Context-Aware Markov initialized (run unified_trainer to train)")
+    end
+else
+    print("Info: context_markov.lua not found - install for smarter responses")
+end
+
 -- NEW: Advanced AI modules (Transformer components)
 success, module = pcall(require, "attention")
 if success then
@@ -1858,6 +1875,20 @@ Give me a few examples and I'll learn from them!]]
             else
                 response = "Okay, I'll keep my name as " .. BOT_NAME .. "."
             end
+        elseif message:lower():find("call me") or message:lower():find("my name") then
+            -- User wants to change their nickname
+            local name = message:match("call me (%w+)") or message:match("my name.+(%w+)")
+            if name then
+                response = setNickname(user, name)
+            else
+                write("What should I call you? ")
+                local newName = read()
+                if newName ~= "" then
+                    response = setNickname(user, newName)
+                else
+                    response = "Okay, I'll keep calling you " .. getName(user) .. "."
+                end
+            end
         else
             write("What should I call you? ")
             local newName = read()
@@ -1938,17 +1969,46 @@ Give me a few examples and I'll learn from them!]]
         memorySearch.addMemory(message, user, {response = response})
     end
     
-    -- If response is still generic or missing, try Markov chain
-    if markov and (not response or response:find("I'm not sure") or response:find("good question") or #response < 10) then
-        local markov_response = markov.generateResponse(message, 2)
-        if markov_response and #markov_response > 10 then
-            response = markov_response
+    -- NEW: Smart Context-Aware Markov (understands conversation flow!)
+    if contextMarkov and (not response or #response < 10) then
+        -- Get conversation history for context
+        local history_msgs = {}
+        local history = getContextualHistory(user, 5)
+        for _, h in ipairs(history) do
+            if h.response then
+                table.insert(history_msgs, h.response)
+            end
+        end
+        
+        -- Generate response with context awareness
+        local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+        if smart_response and #smart_response > 10 then
+            response = smart_response
         end
     end
     
-    -- Learn from this conversation for future use
+    -- Still learn from conversations for future use (both systems)
     if markov and response then
         markov.learnFromConversation(message, response)
+    end
+    
+    if contextMarkov and response then
+        -- Detect context and train
+        local history_msgs = {}
+        local history = getContextualHistory(user, 3)
+        for _, h in ipairs(history) do
+            if h.response then
+                table.insert(history_msgs, h.response)
+            end
+        end
+        
+        local context_tags = contextMarkov.detectContext(history_msgs, message)
+        contextMarkov.trainWithContext(message, response, context_tags)
+        
+        -- Periodic save
+        if memory.conversationCount % 50 == 0 then
+            contextMarkov.save("context_markov.dat")
+        end
     end
     
     -- CREATE EMBEDDING for RLHF
