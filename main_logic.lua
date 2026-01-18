@@ -1,6 +1,19 @@
 -- Module: main_logic.lua
 -- Natural conversational AI with personality and useful features
 
+-- ============================================================================
+-- ADD DISK PATHS TO LUA'S SEARCH PATH
+-- ============================================================================
+
+-- Add all disk drives to Lua's module search path so require() can find modules
+if package and package.path then
+    package.path = package.path .. ";disk2/?.lua"  -- TOP drive (advanced modules)
+    package.path = package.path .. ";disk5/?.lua"  -- LEFT drive
+    package.path = package.path .. ";disk4/?.lua"  -- RIGHT drive
+    package.path = package.path .. ";disk3/?.lua"  -- BACK drive
+    package.path = package.path .. ";disk/?.lua"   -- BOTTOM drive
+end
+
 local M = {}
 
 -- Load dependencies
