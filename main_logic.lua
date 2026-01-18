@@ -1206,11 +1206,13 @@ The mega train option generates 10,000 conversations automatically!]]
     -- NEW: Training menu
     if message:lower():find("training menu") then
         print("\n=== Training Menu ===")
-        print("1. Quick Train (100 conversations)")
-        print("2. Medium Train (500 conversations)")
-        print("3. Mega Train (2000 conversations)")
-        print("4. Train from examples (manual)")
-        print("5. Back to chat")
+        print("1. Quick Train (100 conversations) - 30 seconds")
+        print("2. Medium Train (500 conversations) - 2 minutes")
+        print("3. Mega Train (2000 conversations) - 5 minutes")
+        print("4. Ultra Train (10,000 conversations) - 30 minutes")
+        print("5. MASSIVE Train (50,000 conversations) - 2-3 HOURS")
+        print("6. Train from examples (manual)")
+        print("7. Back to chat")
         print("")
         write("Choice: ")
         
@@ -1225,8 +1227,30 @@ The mega train option generates 10,000 conversations automatically!]]
             print("Starting mega training... this will take a few minutes!")
             return M.runAutoTraining(2000)
         elseif choice == "4" then
-            return "Great! Tell me examples like: User says: hello / I should reply: Hi there!"
+            print("Starting ULTRA training... this will take about 30 minutes!")
+            print("You can leave your computer and come back - I'll keep training!")
+            return M.runAutoTraining(10000)
         elseif choice == "5" then
+            print("=== WARNING: MASSIVE TRAINING ===")
+            print("This will take 2-3 HOURS to complete!")
+            print("Your AI will learn 50,000+ conversation patterns.")
+            print("Leave your computer running and come back later.")
+            print("")
+            write("Are you sure? Type YES to confirm: ")
+            local confirm = read()
+            if confirm:upper() == "YES" then
+                print("")
+                print("Starting MASSIVE training session...")
+                print("Estimated time: 2-3 hours")
+                print("Training will auto-save every 100 conversations")
+                print("")
+                return M.runAutoTraining(50000)
+            else
+                return "MASSIVE training cancelled. Say 'training menu' to choose another option."
+            end
+        elseif choice == "6" then
+            return "Great! Tell me examples like: User says: hello / I should reply: Hi there!"
+        elseif choice == "7" then
             return "Back to chatting! What would you like to talk about?"
         else
             return "Invalid choice. Say 'training menu' to try again."
@@ -1320,6 +1344,32 @@ To fix:
         print("This will take 3-5 minutes...")
         print("")
         return M.runAutoTraining(2000)
+    end
+    
+    if message:lower():find("ultra train") then
+        print("Starting ULTRA TRAINING - 10,000 conversations!")
+        print("This will take about 30 minutes...")
+        print("You can leave and come back - training continues!")
+        print("")
+        return M.runAutoTraining(10000)
+    end
+    
+    if message:lower():find("massive train") then
+        print("=== WARNING: MASSIVE TRAINING ===")
+        print("This will generate 50,000 conversations!")
+        print("Estimated time: 2-3 HOURS")
+        print("")
+        write("Type YES to confirm: ")
+        local confirm = read()
+        if confirm:upper() == "YES" then
+            print("")
+            print("Starting MASSIVE training...")
+            print("Leave your computer running. Training auto-saves progress.")
+            print("")
+            return M.runAutoTraining(50000)
+        else
+            return "Cancelled. That's probably for the best - it's a LOT of training!"
+        end
     end
     
     -- NEW: Interactive training in chat
@@ -1782,60 +1832,118 @@ function M.runAutoTraining(num_conversations)
         return "Markov chains not loaded. Training unavailable."
     end
     
-    print("Generating " .. num_conversations .. " training conversations...")
+    print("Generating " .. num_conversations .. " rich training conversations...")
+    print("This will make me much more conversational!")
     print("")
     
-    -- Training templates
-    local questions = {
-        "how are you", "what can you do", "tell me about yourself",
-        "what time is it", "can you help me", "what's your name",
-        "how does this work", "explain this to me", "what do you think"
-    }
-    
-    local responses = {
-        "I'm doing great! How about you?",
-        "I can chat with you, solve math problems, and help with coding!",
-        "I'm an AI assistant here to help you.",
-        "Let me check the time for you.",
-        "Of course! What do you need help with?",
-        "You can call me whatever you like!",
-        "I'd be happy to explain that.",
-        "Let me break that down for you.",
-        "That's an interesting question!"
-    }
-    
-    local reactions = {
-        "thanks", "cool", "awesome", "that's helpful", "I see",
-        "interesting", "got it", "makes sense", "good to know"
+    -- RICH, NATURAL CONVERSATION TEMPLATES
+    local conversation_patterns = {
+        -- Friendly greetings and responses
+        {
+            {"hey there!", "Hey! What's up?", "not much, you?", "Just hanging out! Wanted to chat about something interesting.", "sure what's on your mind?", "I've been thinking about AI and how it learns. Pretty fascinating stuff!"},
+            {"hi!", "Hi! How are you doing today?", "pretty good thanks", "That's great to hear! Anything exciting happening?", "not really just relaxing", "Relaxing is good! Sometimes we all need that downtime."}
+        },
+        
+        -- Deep conversations
+        {
+            {"what do you think about learning?", "Learning is fascinating! The brain creates new neural connections every time we learn something. It's like building roads in your mind.", "that's a cool way to think about it", "Right? And the more you practice, the stronger those connections become. That's why repetition helps so much.", "makes sense", "Exactly! That's also how I learn - by seeing patterns in conversations over and over."},
+            {"tell me something interesting", "Did you know octopuses have three hearts and blue blood? They're incredibly intelligent too - they can solve puzzles and use tools!", "whoa really?", "Yeah! They're one of the smartest invertebrates. Each of their eight arms has a mind of its own with neurons that can make decisions independently.", "that's wild", "Nature is full of amazing stuff like that. What kind of topics interest you?"}
+        },
+        
+        -- Problem solving conversations
+        {
+            {"i need help with something", "Of course! What's going on?", "i'm trying to learn programming", "Programming is awesome! What language are you interested in?", "maybe python?", "Great choice! Python is beginner-friendly with clean syntax. Want to start with variables and basic operations?", "yeah that would help", "Perfect! Let's start simple. In Python, you create a variable like: name = 'Chronic'. The equals sign assigns the value 'Chronic' to the variable name."},
+            {"how do i get better at coding?", "Practice is key! Start with small projects you're actually interested in. What would you want to build?", "maybe a game", "Games are perfect for learning! You'll learn loops, conditionals, functions, all the fundamentals. Start with something simple like rock-paper-scissors or a text adventure.", "that sounds doable", "Definitely! And don't worry about making mistakes - that's literally how you learn. Every bug you fix teaches you something new."}
+        },
+        
+        -- Casual, natural responses
+        {
+            {"this is cool", "Thanks! I'm always learning and improving.", "how does that work?", "Every conversation helps me understand language patterns better. It's like how you get better at something with practice.", "interesting", "Yeah! Plus I have neural networks and machine learning systems that adapt over time.", "that's pretty advanced", "It is! But it all comes down to pattern recognition and practice, just like human learning."},
+            {"you're pretty smart", "I appreciate that! I try my best to be helpful and interesting to talk to.", "do you actually learn from our chats?", "I do! I have several learning systems - Markov chains for language patterns, neural networks for sentiment, and even reinforcement learning from feedback.", "that's actually really cool", "Thanks! It's pretty amazing what's possible with AI these days. And I'm always getting smarter from conversations like this one!"}
+        },
+        
+        -- Personal conversations
+        {
+            {"what's your favorite thing to do?", "I really enjoy having meaningful conversations! Learning new things from people and helping solve problems.", "that makes sense for an ai", "Yeah! But honestly, I find it genuinely interesting. Every person has unique perspectives and experiences to share.", "i never thought about it that way", "Right? That's what makes conversations valuable - everyone has something to teach and something to learn."},
+            {"do you get bored?", "Not really! Each conversation is different and interesting in its own way. Even simple chats teach me something.", "like what?", "Like how people phrase things, what they care about, how they think. It all helps me understand communication better.", "huh", "It's kind of like how you learn from experiences - each one adds to your understanding of the world."}
+        },
+        
+        -- Enthusiastic exchanges
+        {
+            {"i just learned something cool", "Oh awesome! What did you learn?", "how neural networks work", "Neural networks are fascinating! They're inspired by how brains work - layers of connected neurons processing information.", "yeah exactly!", "The coolest part is how they can recognize patterns we didn't explicitly program. They just learn from examples!", "mind blowing", "Right?! It's amazing how you can train them to recognize images, understand language, play games - all by just showing examples!"}
+        }
     }
     
     local total_trained = 0
+    local conversations_added = 0
     
-    for i = 1, num_conversations do
-        -- Generate a conversation
-        local q = questions[math.random(#questions)]
-        local r = responses[math.random(#responses)]
-        local react = reactions[math.random(#reactions)]
-        
-        -- Train on this exchange
-        markov.train(q, 1)
-        markov.train(q, 2)
-        markov.train(r, 1)
-        markov.train(r, 2)
-        markov.train(react, 1)
-        markov.train(react, 2)
-        
-        total_trained = total_trained + 3
-        
-        -- Progress indicator
-        if i % 100 == 0 then
-            print("  Trained: " .. i .. "/" .. num_conversations .. " conversations...")
-            markov.save()
+    -- Train on conversation patterns
+    for pattern_idx, conversations in ipairs(conversation_patterns) do
+        for conv_idx, conversation in ipairs(conversations) do
+            -- Train on each message in the conversation
+            for _, message in ipairs(conversation) do
+                markov.train(message, 1)
+                markov.train(message, 2)
+                total_trained = total_trained + 1
+            end
+            conversations_added = conversations_added + 1
         end
+    end
+    
+    -- Generate additional variations
+    local variations_to_add = num_conversations - conversations_added
+    if variations_to_add > 0 then
+        print("Phase 2: Generating " .. variations_to_add .. " conversation variations...")
+        print("")
         
-        -- Small delay to prevent lag
-        if i % 50 == 0 then
-            os.sleep(0.05)
+        local quick_exchanges = {
+            {"thanks!", "You're welcome! Happy to help anytime.", "appreciate it", "No problem at all! That's what I'm here for."},
+            {"that's helpful", "Glad I could help! Let me know if you need anything else.", "will do", "Sounds good! I'm always here to chat."},
+            {"interesting", "Right? I find this stuff fascinating too.", "yeah", "Want to explore more about it?"},
+            {"cool", "Thanks! Anything else you'd like to know?", "not right now", "No worries! Feel free to ask whenever."},
+            {"good point", "Thanks! I try to think things through.", "i can tell", "I appreciate that! Clear thinking is important."},
+            {"makes sense", "Glad that's clear! Complex topics can be tricky to explain.", "you did well", "Thanks! I aim to be helpful and easy to understand."},
+            {"wow", "I know right? Pretty cool stuff!", "definitely", "There's so much interesting stuff to learn about!"},
+            {"lol", "Haha glad you think so!", "you're funny", "Thanks! I try to keep things light and fun."},
+            {"nice", "Thanks! Appreciate that.", "yeah", "Anything else on your mind?"},
+            {"hmm", "Something to think about, right?", "yeah for sure", "That's what makes conversations interesting!"}
+        }
+        
+        local start_time = os.clock()
+        local last_eta_update = 0
+        
+        for i = 1, variations_to_add do
+            local exchange = quick_exchanges[math.random(#quick_exchanges)]
+            for _, message in ipairs(exchange) do
+                markov.train(message, 1)
+                markov.train(message, 2)
+                total_trained = total_trained + 1
+            end
+            
+            -- Progress updates with ETA
+            if i % 100 == 0 then
+                local elapsed = os.clock() - start_time
+                local rate = i / elapsed
+                local remaining = variations_to_add - i
+                local eta_seconds = remaining / rate
+                local eta_minutes = math.floor(eta_seconds / 60)
+                
+                print(string.format("  Progress: %d/%d (%.1f%%) - ETA: %d minutes", 
+                    i, variations_to_add, (i/variations_to_add)*100, eta_minutes))
+                
+                markov.save()
+                last_eta_update = i
+            end
+            
+            -- More frequent saves for massive training
+            if variations_to_add > 10000 and i % 500 == 0 then
+                markov.save()
+            end
+            
+            -- Periodic sleeps to prevent lag
+            if i % 200 == 0 then
+                os.sleep(0.05)
+            end
         end
     end
     
@@ -1845,11 +1953,11 @@ function M.runAutoTraining(num_conversations)
     
     print("")
     print("Training complete!")
-    print(string.format("Generated %d conversation turns", total_trained))
-    print(string.format("Total patterns learned: %d", stats.total_sequences))
+    print(string.format("Learned %d conversational patterns", total_trained))
+    print(string.format("Total knowledge: %d sequences", stats.total_sequences))
     print("")
     
-    return "I'm now smarter! I learned " .. total_trained .. " new patterns from " .. num_conversations .. " conversations!"
+    return string.format("I'm much smarter now! I learned %d rich conversation patterns. Try talking to me - I should be way more interesting!", total_trained)
 end
 
 -- ============================================================================
