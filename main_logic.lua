@@ -1181,15 +1181,55 @@ SYSTEM:
 
 QUICK TRAINING (in chat):
 • Say "train from examples" - I'll guide you through teaching me
+• Say "quick train" - Fast automatic training
+• Say "mega train" - Generate thousands of conversations
 
-ADVANCED TRAINING (external programs):
-Run these from the command prompt (type 'quit' first):
-• ai_vs_ai - Two AIs talk to train me (FASTEST!)
-• auto_trainer - Template-based training
-• easy_trainer - You teach me manually
-• neural_trainer - Train my neural network
+TRAINING MENU:
+• Say "training menu" - Interactive training options
 
-The ai_vs_ai program is recommended - it generates 10,000 conversations in minutes!]]
+The mega train option generates 10,000 conversations automatically!]]
+    end
+    
+    -- NEW: Training menu
+    if message:lower():find("training menu") then
+        print("\n=== Training Menu ===")
+        print("1. Quick Train (100 conversations)")
+        print("2. Medium Train (500 conversations)")
+        print("3. Mega Train (2000 conversations)")
+        print("4. Train from examples (manual)")
+        print("5. Back to chat")
+        print("")
+        write("Choice: ")
+        
+        local choice = read()
+        print("")
+        
+        if choice == "1" then
+            return M.runAutoTraining(100)
+        elseif choice == "2" then
+            return M.runAutoTraining(500)
+        elseif choice == "3" then
+            print("Starting mega training... this will take a few minutes!")
+            return M.runAutoTraining(2000)
+        elseif choice == "4" then
+            return "Great! Tell me examples like: User says: hello / I should reply: Hi there!"
+        elseif choice == "5" then
+            return "Back to chatting! What would you like to talk about?"
+        else
+            return "Invalid choice. Say 'training menu' to try again."
+        end
+    end
+    
+    -- NEW: Quick inline training commands
+    if message:lower():find("quick train") then
+        return M.runAutoTraining(100)
+    end
+    
+    if message:lower():find("mega train") then
+        print("Starting MEGA TRAINING - 2000 conversations!")
+        print("This will take 3-5 minutes...")
+        print("")
+        return M.runAutoTraining(2000)
     end
     
     -- NEW: Interactive training in chat
@@ -1641,6 +1681,85 @@ Give me a few examples and I'll learn from them!]]
     end
     
     return response
+end
+
+-- ============================================================================
+-- INLINE TRAINING FUNCTION
+-- ============================================================================
+
+function M.runAutoTraining(num_conversations)
+    if not markov then
+        return "Markov chains not loaded. Training unavailable."
+    end
+    
+    print("Generating " .. num_conversations .. " training conversations...")
+    print("")
+    
+    -- Training templates
+    local questions = {
+        "how are you", "what can you do", "tell me about yourself",
+        "what time is it", "can you help me", "what's your name",
+        "how does this work", "explain this to me", "what do you think"
+    }
+    
+    local responses = {
+        "I'm doing great! How about you?",
+        "I can chat with you, solve math problems, and help with coding!",
+        "I'm an AI assistant here to help you.",
+        "Let me check the time for you.",
+        "Of course! What do you need help with?",
+        "You can call me whatever you like!",
+        "I'd be happy to explain that.",
+        "Let me break that down for you.",
+        "That's an interesting question!"
+    }
+    
+    local reactions = {
+        "thanks", "cool", "awesome", "that's helpful", "I see",
+        "interesting", "got it", "makes sense", "good to know"
+    }
+    
+    local total_trained = 0
+    
+    for i = 1, num_conversations do
+        -- Generate a conversation
+        local q = questions[math.random(#questions)]
+        local r = responses[math.random(#responses)]
+        local react = reactions[math.random(#reactions)]
+        
+        -- Train on this exchange
+        markov.train(q, 1)
+        markov.train(q, 2)
+        markov.train(r, 1)
+        markov.train(r, 2)
+        markov.train(react, 1)
+        markov.train(react, 2)
+        
+        total_trained = total_trained + 3
+        
+        -- Progress indicator
+        if i % 100 == 0 then
+            print("  Trained: " .. i .. "/" .. num_conversations .. " conversations...")
+            markov.save()
+        end
+        
+        -- Small delay to prevent lag
+        if i % 50 == 0 then
+            os.sleep(0.05)
+        end
+    end
+    
+    -- Save final result
+    markov.save()
+    local stats = markov.getStats()
+    
+    print("")
+    print("Training complete!")
+    print(string.format("Generated %d conversation turns", total_trained))
+    print(string.format("Total patterns learned: %d", stats.total_sequences))
+    print("")
+    
+    return "I'm now smarter! I learned " .. total_trained .. " new patterns from " .. num_conversations .. " conversations!"
 end
 
 -- ============================================================================
