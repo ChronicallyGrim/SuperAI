@@ -291,6 +291,11 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
         if (conv - start_conv + 1) % 50 == 0 then
             print(string.format("Batch progress: %d/%d", conv - start_conv + 1, end_conv - start_conv + 1))
         end
+        
+        -- CRITICAL: Yield to prevent "too long without yielding" error
+        if (conv - start_conv + 1) % 10 == 0 then
+            os.sleep(0)
+        end
     end
     
     local final_s = readPersonality("student")
