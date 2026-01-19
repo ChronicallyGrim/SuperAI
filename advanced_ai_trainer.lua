@@ -3,31 +3,16 @@
 
 local M = {}
 
--- Detect drives by side (using peripheral.find for wired networks)
+-- Detect drives by side (using drive_config.lua)
 local function getDrivesBySide()
-    local drives_by_side = {left = {}, back = {}, right = {}, bottom = {}, top = {}}
-    
-    -- Find all disk drives
-    local all_drives = {peripheral.find("drive")}
-    
-    for _, drive_wrap in ipairs(all_drives) do
-        local name = peripheral.getName(drive_wrap)
-        
-        -- Categorize by name prefix
-        if name:match("^left_") then
-            table.insert(drives_by_side.left, name)
-        elseif name:match("^back_") then
-            table.insert(drives_by_side.back, name)
-        elseif name:match("^right_") then
-            table.insert(drives_by_side.right, name)
-        elseif name:match("^bottom_") then
-            table.insert(drives_by_side.bottom, name)
-        elseif name:match("^top_") then
-            table.insert(drives_by_side.top, name)
-        end
-    end
-    
-    return drives_by_side
+    local config = require("drive_config")
+    return {
+        left = config.left,
+        back = config.back,
+        right = config.right,
+        bottom = config.bottom,
+        top = config.top and {config.top} or {}
+    }
 end
 
 -- Initialize drive system
