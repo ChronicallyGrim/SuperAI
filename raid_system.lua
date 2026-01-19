@@ -4,22 +4,18 @@
 
 local M = {}
 
--- Detect RAID drives
+-- Detect RAID drives (using peripheral.find for wired networks)
 local function detectRAIDDrives()
+    local all_drives = {peripheral.find("drive")}
     local raid_drives = {}
     
-    -- RIGHT drives (RAID A)
-    for i = 0, 50 do
-        local name = "right_" .. i
-        if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
-            table.insert(raid_drives, name)
-        end
-    end
-    
-    -- BOTTOM drives (RAID B)
-    for i = 0, 50 do
-        local name = "bottom_" .. i
-        if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
+    -- Categorize drives by their location
+    -- We want RIGHT and BOTTOM drives for RAID
+    for _, drive_wrap in ipairs(all_drives) do
+        local name = peripheral.getName(drive_wrap)
+        
+        -- Check if it's on RIGHT or BOTTOM side
+        if name:match("^right_") or name:match("^bottom_") then
             table.insert(raid_drives, name)
         end
     end
