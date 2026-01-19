@@ -85,7 +85,14 @@ local function evolvePersonality(handle, success, engagement)
         p.metrics.successful_exchanges = p.metrics.successful_exchanges + 1
     end
     if engagement > 0.7 then
-        p.traits.curiosity = math.min(1.0, p.traits.curiosity + 0.005)
+        -- Only evolve curiosity if it exists (student has it, teacher doesn't)
+        if p.traits.curiosity then
+            p.traits.curiosity = math.min(1.0, p.traits.curiosity + 0.005)
+        end
+        -- Evolve helpfulness for teacher
+        if p.traits.helpfulness then
+            p.traits.helpfulness = math.min(1.0, p.traits.helpfulness + 0.003)
+        end
     end
     p.metrics.conversations = p.metrics.conversations + 1
     updatePersonality(handle, p)
