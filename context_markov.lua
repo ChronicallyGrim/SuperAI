@@ -271,8 +271,33 @@ end
 -- ============================================================================
 
 function M.importFromTrainingLog(filepath)
-    if not fs.exists(filepath) then
+    -- Try loading RAID system
+    local raid = nil
+    local success_raid, raid_module = pcall(require, "raid_system")
+    if success_raid then
+        raid = raid_module
+        raid.init()
+    end
+    
+    -- Read file content (from RAID or local)
+    local content = nil
+    local raid_path = filepath:gsub("^/", "")  -- Remove leading slash for RAID
+    
+    if raid and raid.exists(raid_path) then
+        print("Reading from RAID: " .. raid_path)
+        content = raid.read(raid_path)
+    elseif fs.exists(filepath) then
+        print("Reading from local: " .. filepath)
+        local file = fs.open(filepath, "r")
+        content = file.readAll()
+        file.close()
+    else
         print("Training log not found: " .. filepath)
+        return 0
+    end
+    
+    if not content or content == "" then
+        print("Empty training log")
         return 0
     end
     
@@ -281,23 +306,25 @@ function M.importFromTrainingLog(filepath)
     local is_pipe_delimited = false
     
     print("Importing training data" .. (is_csv and " (CSV format)" or "") .. "...")
-    local file = fs.open(filepath, "r")
     local imported = 0
     local line_num = 0
     
-    if is_csv then
+    -- Split content into lines
+    local lines = {}
+    for line in content:gmatch("[^\n]+") do
+        table.insert(lines, line)
+    end
+    
+    if is_csv and #lines > 0 then
         -- Check if first line is pipe-delimited
-        local first_line = file.readLine()
-        if first_line and first_line:find("|") then
+        if lines[1]:find("|") then
             is_pipe_delimited = true
         end
         line_num = 1
+        table.remove(lines, 1)  -- Remove header
     end
     
-    while true do
-        local line = file.readLine()
-        if not line then break end
-        
+    for _, line in ipairs(lines) do
         line_num = line_num + 1
         
         if is_csv then
@@ -382,8 +409,6 @@ function M.importFromTrainingLog(filepath)
             print(string.format("  Processed: %d lines, imported: %d patterns", line_num, imported))
         end
     end
-    
-    file.close()
     
     print(string.format("Import complete! %d conversation patterns learned", imported))
     print(string.format("Total contexts: %d", M.stats.contexts_learned))
