@@ -23,19 +23,19 @@ local current_ram_drive = 1
 local function initDrives()
     local drives = getDrivesBySide()
     
-    -- RAM A (LEFT) + RAM B (BACK) = 6 drives for virtual memory
-    for _, drive in ipairs(drives.left) do
-        table.insert(RAM_DRIVES, drive)
-    end
+    -- RAM A (BACK) + RAM B (BOTTOM) = 6 drives for virtual memory
     for _, drive in ipairs(drives.back) do
         table.insert(RAM_DRIVES, drive)
     end
+    for _, drive in ipairs(drives.bottom) do
+        table.insert(RAM_DRIVES, drive)
+    end
     
-    -- RAID A (RIGHT) + RAID B (BOTTOM) = 4 drives for persistent storage  
-    for _, drive in ipairs(drives.right) do
+    -- RAID A (LEFT) + RAID B (RIGHT) = 4 drives for persistent storage  
+    for _, drive in ipairs(drives.left) do
         table.insert(RAID_DRIVES, drive)
     end
-    for _, drive in ipairs(drives.bottom) do
+    for _, drive in ipairs(drives.right) do
         table.insert(RAID_DRIVES, drive)
     end
     
