@@ -4,7 +4,7 @@
 local M = {}
 
 local SWAP_DISK = "disk4"
-local BATCH_SIZE = 450  -- Safe limit per execution
+local BATCH_SIZE = 300  -- Proven safe limit (2 batches work, 450 doesn't)
 
 -- Progress tracking
 local function saveProgress(completed, total, s_conf, t_conf)
