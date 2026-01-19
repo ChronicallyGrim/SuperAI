@@ -248,7 +248,7 @@ function M.createAdvancedTrainingSession(options)
             
             -- Clear context to free memory
             context = nil
-            collectgarbage("collect")
+            -- Note: ComputerCraft handles memory automatically
         end
         
         -- Small delay
