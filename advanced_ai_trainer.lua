@@ -3,17 +3,27 @@
 
 local M = {}
 
--- Detect all drives by side
+-- Detect drives by side (using peripheral.find for wired networks)
 local function getDrivesBySide()
     local drives_by_side = {left = {}, back = {}, right = {}, bottom = {}, top = {}}
     
     -- Find all disk drives
-    for _, side in ipairs({"left", "right", "top", "bottom", "back", "front"}) do
-        for i = 0, 50 do
-            local name = side .. "_" .. i
-            if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
-                table.insert(drives_by_side[side], name)
-            end
+    local all_drives = {peripheral.find("drive")}
+    
+    for _, drive_wrap in ipairs(all_drives) do
+        local name = peripheral.getName(drive_wrap)
+        
+        -- Categorize by name prefix
+        if name:match("^left_") then
+            table.insert(drives_by_side.left, name)
+        elseif name:match("^back_") then
+            table.insert(drives_by_side.back, name)
+        elseif name:match("^right_") then
+            table.insert(drives_by_side.right, name)
+        elseif name:match("^bottom_") then
+            table.insert(drives_by_side.bottom, name)
+        elseif name:match("^top_") then
+            table.insert(drives_by_side.top, name)
         end
     end
     
