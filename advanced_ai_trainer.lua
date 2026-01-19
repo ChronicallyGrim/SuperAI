@@ -253,7 +253,7 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
     local log_mode = start_conv == 1 and "w" or "a"
     if start_conv == 1 then
         local log = fs.open("/training/conversation_log.csv", "w")
-        log.writeLine("speaker_a,message_a,speaker_b,message_b,topic,emotion,turn,depth")
+        log.writeLine("speaker_a|message_a|speaker_b|message_b|topic|emotion|turn|depth")
         log.close()
     end
     
@@ -273,18 +273,18 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
             local t_msg = generateResponse("teacher", ctx_id, "teacher", t_p.traits)
             ctx = addExchange(ctx_id, "Teacher", t_msg)
             
-            -- Write directly, replace commas/newlines to avoid CSV issues
-            log.write("Student,")
-            log.write(s_msg:gsub(",", ";"):gsub("\n", " "))
-            log.write(",Teacher,")
-            log.write(t_msg:gsub(",", ";"):gsub("\n", " "))
-            log.write(",")
+            -- Use pipe | delimiter instead of comma to avoid ALL string processing
+            log.write("Student|")
+            log.write(s_msg)  -- Raw, no processing!
+            log.write("|Teacher|")
+            log.write(t_msg)  -- Raw, no processing!
+            log.write("|")
             log.write(ctx.current_topic)
-            log.write(",")
+            log.write("|")
             log.write(ctx.emotional_state)
-            log.write(",")
+            log.write("|")
             log.write(tostring(turn))
-            log.write(",")
+            log.write("|")
             log.write(tostring(ctx.depth))
             log.write("\n")
             
