@@ -1,96 +1,144 @@
--- advanced_ai_trainer.lua (Batch System - Works around ComputerCraft limits!)
--- Trains in batches of 450 conversations, can be resumed
+-- advanced_ai_trainer.lua (Multi-Drive RAM System)
+-- Uses 6 RAM drives (LEFT + BACK) for massive virtual memory capacity
 
 local M = {}
 
-local SWAP_DISK = "disk4"
-local BATCH_SIZE = 300  -- Proven safe limit (2 batches work, 450 doesn't)
-
--- Progress tracking
-local function saveProgress(completed, total, s_conf, t_conf)
-    local f = fs.open("/training/progress.txt", "w")
-    f.writeLine(tostring(completed))
-    f.writeLine(tostring(total))
-    f.writeLine(tostring(s_conf))
-    f.writeLine(tostring(t_conf))
-    f.close()
-end
-
-local function loadProgress()
-    if not fs.exists("/training/progress.txt") then
-        return 0, 0, 0.5, 0.7
+-- Detect all drives by side
+local function getDrivesBySide()
+    local drives_by_side = {left = {}, back = {}, right = {}, bottom = {}, top = {}}
+    
+    -- Find all disk drives
+    for _, side in ipairs({"left", "right", "top", "bottom", "back", "front"}) do
+        for i = 0, 50 do
+            local name = side .. "_" .. i
+            if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
+                table.insert(drives_by_side[side], name)
+            end
+        end
     end
-    local f = fs.open("/training/progress.txt", "r")
-    local completed = tonumber(f.readLine()) or 0
-    local total = tonumber(f.readLine()) or 0
-    local s_conf = tonumber(f.readLine()) or 0.5
-    local t_conf = tonumber(f.readLine()) or 0.7
-    f.close()
-    return completed, total, s_conf, t_conf
+    
+    return drives_by_side
 end
 
--- [ALL THE PREVIOUS FUNCTIONS - writePersonality, readPersonality, writeContext, readContext, etc.]
--- [Copy from previous version - keeping this file size down for readability]
+-- Initialize drive system
+local RAM_DRIVES = {}  -- LEFT + BACK (6 drives for swap)
+local RAID_DRIVES = {} -- RIGHT + BOTTOM (4 drives for storage)
+local current_ram_drive = 1
 
--- Manual encoding functions
-local function writePersonality(id, role, traits, metrics)
-    local f = fs.open(SWAP_DISK .. "/p_" .. id, "w")
-    f.writeLine(role)
-    if role == "student" then
-        f.writeLine(tostring(traits.curiosity))
-        f.writeLine(tostring(traits.enthusiasm))
-        f.writeLine(tostring(traits.depth))
-        f.writeLine(tostring(traits.humor))
-        f.writeLine(tostring(traits.creativity))
-    else
-        f.writeLine(tostring(traits.helpfulness))
-        f.writeLine(tostring(traits.patience))
-        f.writeLine(tostring(traits.depth))
-        f.writeLine(tostring(traits.clarity))
-        f.writeLine(tostring(traits.encouragement))
+local function initDrives()
+    local drives = getDrivesBySide()
+    
+    -- RAM A (LEFT) + RAM B (BACK) = 6 drives for virtual memory
+    for _, drive in ipairs(drives.left) do
+        table.insert(RAM_DRIVES, drive)
     end
-    f.writeLine(tostring(metrics.conversations))
-    f.writeLine(tostring(metrics.successful_exchanges))
-    f.writeLine(tostring(metrics.confidence))
-    f.writeLine(tostring(metrics.learning_rate))
+    for _, drive in ipairs(drives.back) do
+        table.insert(RAM_DRIVES, drive)
+    end
+    
+    -- RAID A (RIGHT) + RAID B (BOTTOM) = 4 drives for persistent storage  
+    for _, drive in ipairs(drives.right) do
+        table.insert(RAID_DRIVES, drive)
+    end
+    for _, drive in ipairs(drives.bottom) do
+        table.insert(RAID_DRIVES, drive)
+    end
+    
+    print(string.format("Found %d RAM drives, %d RAID drives", #RAM_DRIVES, #RAID_DRIVES))
+    
+    if #RAM_DRIVES == 0 then
+        error("No RAM drives found! Need LEFT or BACK drives.")
+    end
+    
+    -- Clear all RAM drives
+    for _, drive in ipairs(RAM_DRIVES) do
+        if fs.exists(drive .. "/swap") then
+            fs.delete(drive .. "/swap")
+        end
+        fs.makeDir(drive .. "/swap")
+    end
+end
+
+-- Get next RAM drive (rotate through all 6)
+local function getNextRAMDrive()
+    local drive = RAM_DRIVES[current_ram_drive]
+    current_ram_drive = (current_ram_drive % #RAM_DRIVES) + 1
+    return drive
+end
+
+-- Write to rotating RAM drive
+local function swapWrite(key, data, drive)
+    local f = fs.open(drive .. "/swap/" .. key, "w")
+    for k, v in pairs(data) do
+        f.writeLine(k .. "=" .. tostring(v))
+    end
     f.close()
 end
 
-local function readPersonality(id)
-    local path = SWAP_DISK .. "/p_" .. id
+-- Read from RAM drive
+local function swapRead(key, drive)
+    local path = drive .. "/swap/" .. key
     if not fs.exists(path) then return nil end
     local f = fs.open(path, "r")
-    local role = f.readLine()
-    local traits = {}
-    if role == "student" then
-        traits.curiosity = tonumber(f.readLine())
-        traits.enthusiasm = tonumber(f.readLine())
-        traits.depth = tonumber(f.readLine())
-        traits.humor = tonumber(f.readLine())
-        traits.creativity = tonumber(f.readLine())
-    else
-        traits.helpfulness = tonumber(f.readLine())
-        traits.patience = tonumber(f.readLine())
-        traits.depth = tonumber(f.readLine())
-        traits.clarity = tonumber(f.readLine())
-        traits.encouragement = tonumber(f.readLine())
+    local data = {}
+    while true do
+        local line = f.readLine()
+        if not line then break end
+        local k, v = line:match("([^=]+)=(.*)")
+        if k then
+            data[k] = tonumber(v) or v
+        end
     end
-    local metrics = {
-        conversations = tonumber(f.readLine()),
-        successful_exchanges = tonumber(f.readLine()),
-        confidence = tonumber(f.readLine()),
-        learning_rate = tonumber(f.readLine())
-    }
+    f.close()
+    return data
+end
+
+-- Personality functions (simple key=value format, no serialize!)
+local function writePersonality(id, role, traits, metrics, drive)
+    local f = fs.open(drive .. "/swap/p_" .. id, "w")
+    f.writeLine("role=" .. role)
+    for k, v in pairs(traits) do
+        f.writeLine("trait_" .. k .. "=" .. tostring(v))
+    end
+    for k, v in pairs(metrics) do
+        f.writeLine("metric_" .. k .. "=" .. tostring(v))
+    end
+    f.close()
+end
+
+local function readPersonality(id, drive)
+    local path = drive .. "/swap/p_" .. id
+    if not fs.exists(path) then return nil end
+    local f = fs.open(path, "r")
+    local role, traits, metrics = nil, {}, {}
+    while true do
+        local line = f.readLine()
+        if not line then break end
+        local k, v = line:match("([^=]+)=(.*)")
+        if k == "role" then
+            role = v
+        elseif k:match("^trait_") then
+            traits[k:sub(7)] = tonumber(v) or v
+        elseif k:match("^metric_") then
+            metrics[k:sub(8)] = tonumber(v) or v
+        end
+    end
     f.close()
     return {id = id, role = role, traits = traits, metrics = metrics}
 end
 
-local function writeContext(id, topic, emotional_state, depth, question_streak, exchanges)
-    local f = fs.open(SWAP_DISK .. "/c_" .. id, "w")
+-- Context functions (spread across drives)
+local conv_to_drive = {}  -- Track which drive has which conversation
+
+local function writeContext(conv_id, topic, emotion, depth, qstreak, exchanges)
+    local drive = getNextRAMDrive()  -- Rotate!
+    conv_to_drive[conv_id] = drive
+    
+    local f = fs.open(drive .. "/swap/c_" .. conv_id, "w")
     f.writeLine(topic)
-    f.writeLine(emotional_state)
+    f.writeLine(emotion)
     f.writeLine(tostring(depth))
-    f.writeLine(tostring(question_streak))
+    f.writeLine(tostring(qstreak))
     f.writeLine(tostring(#exchanges))
     for _, ex in ipairs(exchanges) do
         f.writeLine(ex.speaker)
@@ -99,14 +147,18 @@ local function writeContext(id, topic, emotional_state, depth, question_streak, 
     f.close()
 end
 
-local function readContext(id)
-    local path = SWAP_DISK .. "/c_" .. id
+local function readContext(conv_id)
+    local drive = conv_to_drive[conv_id]
+    if not drive then return nil end
+    
+    local path = drive .. "/swap/c_" .. conv_id
     if not fs.exists(path) then return nil end
+    
     local f = fs.open(path, "r")
     local topic = f.readLine()
-    local emotional_state = f.readLine()
+    local emotion = f.readLine()
     local depth = tonumber(f.readLine())
-    local question_streak = tonumber(f.readLine())
+    local qstreak = tonumber(f.readLine())
     local count = tonumber(f.readLine())
     local exchanges = {}
     for i = 1, count do
@@ -115,26 +167,95 @@ local function readContext(id)
         table.insert(exchanges, {speaker = speaker, message = message})
     end
     f.close()
-    return {id = id, current_topic = topic, emotional_state = emotional_state, depth = depth, question_streak = question_streak, recent_exchanges = exchanges}
+    
+    return {id = conv_id, current_topic = topic, emotional_state = emotion, 
+            depth = depth, question_streak = qstreak, recent_exchanges = exchanges}
 end
 
-local function createPersonality(id, role, initial_conf)
-    local traits = {}
-    local metrics = {conversations = 0, successful_exchanges = 0, confidence = initial_conf or (role == "student" and 0.5 or 0.7), learning_rate = 1.0}
-    if role == "student" then
-        traits = {curiosity = 0.8, enthusiasm = 0.7, depth = 0.5, humor = 0.4, creativity = 0.6}
-    else
-        traits = {helpfulness = 0.9, patience = 0.8, depth = 0.7, clarity = 0.8, encouragement = 0.9}
+local function deleteContext(conv_id)
+    local drive = conv_to_drive[conv_id]
+    if drive and fs.exists(drive .. "/swap/c_" .. conv_id) then
+        fs.delete(drive .. "/swap/c_" .. conv_id)
     end
-    writePersonality(id, role, traits, metrics)
-    return {id = id}
+    conv_to_drive[conv_id] = nil
 end
 
-local function evolvePersonality(id, role, success, engagement)
-    local p = readPersonality(id)
+-- Progress tracking (on RAID drives)
+local raid = nil
+
+local function initRAID()
+    if not raid then
+        local success, module = pcall(require, "raid_system")
+        if success then
+            raid = module
+            raid.init()
+        end
+    end
+end
+
+local function saveProgress(completed, total, s_conf, t_conf)
+    initRAID()
+    local content = table.concat({
+        tostring(completed),
+        tostring(total),
+        tostring(s_conf),
+        tostring(t_conf)
+    }, "\n")
+    
+    if raid then
+        raid.write("training/progress.txt", content)
+    else
+        local f = fs.open("/training/progress.txt", "w")
+        f.write(content)
+        f.close()
+    end
+end
+
+local function loadProgress()
+    initRAID()
+    local content = nil
+    
+    if raid and raid.exists("training/progress.txt") then
+        content = raid.read("training/progress.txt")
+    elseif fs.exists("/training/progress.txt") then
+        local f = fs.open("/training/progress.txt", "r")
+        content = f.readAll()
+        f.close()
+    end
+    
+    if not content then
+        return 0, 0, 0.5, 0.7
+    end
+    
+    local lines = {}
+    for line in content:gmatch("[^\n]+") do
+        table.insert(lines, line)
+    end
+    
+    return tonumber(lines[1]) or 0, 
+           tonumber(lines[2]) or 0,
+           tonumber(lines[3]) or 0.5,
+           tonumber(lines[4]) or 0.7
+end
+
+-- AI functions (simplified)
+local function createPersonality(id, role, conf, drive)
+    local traits = {}
+    if role == "student" then
+        traits = {curiosity=0.8, enthusiasm=0.7, depth=0.5, humor=0.4, creativity=0.6}
+    else
+        traits = {helpfulness=0.9, patience=0.8, depth=0.7, clarity=0.8, encouragement=0.9}
+    end
+    local metrics = {conversations=0, successful_exchanges=0, confidence=conf, learning_rate=1.0}
+    writePersonality(id, role, traits, metrics, drive)
+    return {id = id, drive = drive}
+end
+
+local function evolvePersonality(handle, success, engagement)
+    local p = readPersonality(handle.id, handle.drive)
     if success then
-        p.metrics.confidence = math.min(1.0, p.metrics.confidence + 0.002)
-        p.metrics.successful_exchanges = p.metrics.successful_exchanges + 1
+        p.metrics.confidence = math.min(1.0, (p.metrics.confidence or 0.5) + 0.002)
+        p.metrics.successful_exchanges = (p.metrics.successful_exchanges or 0) + 1
     end
     if engagement > 0.7 then
         if p.traits.curiosity then
@@ -144,22 +265,23 @@ local function evolvePersonality(id, role, success, engagement)
             p.traits.helpfulness = math.min(1.0, p.traits.helpfulness + 0.003)
         end
     end
-    p.metrics.conversations = p.metrics.conversations + 1
-    writePersonality(id, p.role, p.traits, p.metrics)
+    p.metrics.conversations = (p.metrics.conversations or 0) + 1
+    writePersonality(handle.id, p.role, p.traits, p.metrics, handle.drive)
     return p
 end
 
-local function createContext(id)
-    writeContext(id, "general", "neutral", 0, 0, {})
-    return {id = id}
+local function createContext(conv_id)
+    writeContext(conv_id, "general", "neutral", 0, 0, {})
+    return {id = conv_id}
 end
 
-local function addExchange(ctx_id, speaker, message)
-    local ctx = readContext(ctx_id)
-    table.insert(ctx.recent_exchanges, {speaker = speaker, message = message})
+local function addExchange(conv_id, speaker, message)
+    local ctx = readContext(conv_id)
+    table.insert(ctx.recent_exchanges, {speaker=speaker, message=message})
     if #ctx.recent_exchanges > 5 then
         table.remove(ctx.recent_exchanges, 1)
     end
+    
     local msg_lower = message:lower()
     if msg_lower:find("code") or msg_lower:find("program") then ctx.current_topic = "programming"
     elseif msg_lower:find("learn") or msg_lower:find("study") then ctx.current_topic = "learning"
@@ -167,151 +289,161 @@ local function addExchange(ctx_id, speaker, message)
     elseif msg_lower:find("ai") or msg_lower:find("intelligence") then ctx.current_topic = "ai"
     elseif msg_lower:find("game") or msg_lower:find("play") then ctx.current_topic = "gaming"
     end
+    
     if msg_lower:find("awesome") or msg_lower:find("great") then ctx.emotional_state = "positive"
     elseif msg_lower:find("confus") or msg_lower:find("hard") then ctx.emotional_state = "confused"
     elseif msg_lower:find("interest") or msg_lower:find("curious") then ctx.emotional_state = "curious"
     elseif msg_lower:find("frustrat") then ctx.emotional_state = "frustrated"
     else ctx.emotional_state = "neutral"
     end
+    
     ctx.depth = ctx.depth + 1
     ctx.question_streak = message:find("?") and (ctx.question_streak + 1) or 0
+    
     writeContext(ctx.id, ctx.current_topic, ctx.emotional_state, ctx.depth, ctx.question_streak, ctx.recent_exchanges)
     return ctx
 end
 
--- Templates
+-- Templates (loaded once)
 local ST = {
     g = {"Hey! How's it going?", "Hi! What's up?", "Hello! What's new?", "Yo! Ready to learn?"},
-    q = {"How does that work?", "Can you explain more?", "What do you mean?", "Why is that important?", "What's the best way?", "Is there more to it?", "What are the key concepts?", "How would I use that?"},
-    r = {"That's interesting!", "Oh I see!", "That makes sense!", "I never thought of that!", "Cool, thanks!", "Wow, fascinating!", "This helps!", "Ah, now I get it!"},
-    a = {"Got it!", "I understand!", "That helps!", "Makes sense!", "Awesome!", "Oh I see!", "Clear!", "Perfect!"},
-    d = {"What's the underlying principle?", "How does this connect?", "What are real-world uses?", "Why designed that way?"}
+    q = {"How does that work?", "Can you explain more?", "What do you mean?", "Why is that important?", "What's the best way?"},
+    r = {"That's interesting!", "Oh I see!", "That makes sense!", "Cool, thanks!"},
+    a = {"Got it!", "I understand!", "Makes sense!", "Awesome!"},
+    d = {"What's the underlying principle?", "How does this connect?"}
 }
 
 local TT = {
-    g = {"Hey! Ready to learn?", "Hi! What would you like to know?", "Hello! Let's dive in!"},
-    e = {"Great question! Let me explain.", "Think of it like organizing information.", "The key is how parts work together.", "Simpler than it sounds.", "Let me break it down.", "Here's how to think about it.", "The important thing is this.", "Imagine it like this."},
-    c = {"You're getting it!", "Exactly!", "Good thinking!", "Perfect!", "That's it!", "You've got it!", "Well done!", "Spot on!"},
-    f = {"Make sense?", "Want more?", "Questions?", "Ready to move on?", "Got it?", "Clear?"},
-    b = {"To add,", "Another way:", "Building on that:", "Interesting detail:"}
+    g = {"Hey! Ready to learn?", "Hi! What would you like to know?"},
+    e = {"Great question! Let me explain.", "Think of it like organizing information.", "The key is how parts work together."},
+    c = {"You're getting it!", "Exactly!", "Perfect!"},
+    f = {"Make sense?", "Questions?", "Got it?"}
 }
 
 local function choose(list)
     return list[math.random(#list)]
 end
 
-local function generateResponse(personality_id, context_id, role, traits)
-    local ctx = readContext(context_id)
+local function generateResponse(role, ctx, traits)
     local last_msg = #ctx.recent_exchanges > 0 and ctx.recent_exchanges[#ctx.recent_exchanges].message or nil
-    local is_question = last_msg and last_msg:find("?") ~= nil
+    local is_q = last_msg and last_msg:find("?") ~= nil
+    
     if role == "student" then
         if not last_msg then return choose(ST.g)
-        elseif is_question then
+        elseif is_q then
             local r = choose(ST.a)
             if math.random() < traits.curiosity then
-                r = r .. " " .. (ctx.depth > 7 and math.random() < 0.3 and choose(ST.d) or choose(ST.q))
+                r = r .. " " .. choose(ST.q)
             end
             return r
         elseif ctx.depth > 5 and math.random() < 0.4 then return choose(ST.r)
         else return choose(ST.q)
         end
     else
-        if is_question then
+        if is_q then
             local r = choose(TT.e)
-            if ctx.depth > 6 and math.random() < 0.2 then r = choose(TT.b) .. " " .. r:lower() end
-            if math.random() < 0.3 and ctx.question_streak < 2 then r = r .. " " .. choose(TT.f) end
+            if math.random() < 0.3 then r = r .. " " .. choose(TT.f) end
             return r
         else return choose(TT.c)
         end
     end
 end
 
-local function csvEscape(str)
-    return '"' .. str:gsub('"', '""') .. '"'
-end
-
--- Main batch training
+-- Main batch training (now with 6-drive rotation!)
 function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
-    if not fs.exists(SWAP_DISK) then
-        print("ERROR: Swap disk not found!")
-        return 0, s_conf, t_conf
-    end
+    initRAID()
     
-    if not fs.exists("/training") then
-        fs.makeDir("/training")
-    end
+    -- Use first RAM drive for personalities (they're small)
+    local student = createPersonality("student", "student", s_conf, RAM_DRIVES[1])
+    local teacher = createPersonality("teacher", "teacher", t_conf, RAM_DRIVES[1])
     
-    if fs.exists(SWAP_DISK .. "/swap") then
-        fs.delete(SWAP_DISK .. "/swap")
-    end
-    fs.makeDir(SWAP_DISK .. "/swap")
-    
-    -- Create/load personalities with current confidence
-    createPersonality("student", "student", s_conf)
-    createPersonality("teacher", "teacher", t_conf)
-    
-    local log_mode = start_conv == 1 and "w" or "a"
+    -- Initialize CSV log
+    local csv_data = ""
     if start_conv == 1 then
-        local log = fs.open("/training/conversation_log.csv", "w")
-        log.writeLine("speaker_a|message_a|speaker_b|message_b|topic|emotion|turn|depth")
-        log.close()
+        csv_data = "speaker_a|message_a|speaker_b|message_b|topic|emotion|turn|depth\n"
+    else
+        -- Load existing data if appending
+        if raid and raid.exists("training/conversation_log.csv") then
+            csv_data = raid.read("training/conversation_log.csv")
+        elseif fs.exists("/training/conversation_log.csv") then
+            local f = fs.open("/training/conversation_log.csv", "r")
+            csv_data = f.readAll()
+            f.close()
+        end
     end
     
     local start_time = os.clock()
     local total = 0
+    local log_buffer = {}  -- Buffer lines before writing to RAID
     
     for conv = start_conv, end_conv do
         local ctx_id = "c" .. conv
-        createContext(ctx_id)
-        local s_p = readPersonality("student")
-        local t_p = readPersonality("teacher")
-        local s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
+        createContext(ctx_id)  -- Auto-rotates to next RAM drive!
+        
+        local s_p = readPersonality("student", student.drive)
+        local t_p = readPersonality("teacher", teacher.drive)
+        
+        local s_msg = generateResponse("student", readContext(ctx_id), s_p.traits)
         local ctx = addExchange(ctx_id, "Student", s_msg)
         
-        local log = fs.open("/training/conversation_log.csv", "a")
         for turn = 1, turns - 1 do
-            local t_msg = generateResponse("teacher", ctx_id, "teacher", t_p.traits)
+            local t_msg = generateResponse("teacher", ctx, t_p.traits)
             ctx = addExchange(ctx_id, "Teacher", t_msg)
             
-            -- Use pipe | delimiter instead of comma to avoid ALL string processing
-            log.write("Student|")
-            log.write(s_msg)  -- Raw, no processing!
-            log.write("|Teacher|")
-            log.write(t_msg)  -- Raw, no processing!
-            log.write("|")
-            log.write(ctx.current_topic)
-            log.write("|")
-            log.write(ctx.emotional_state)
-            log.write("|")
-            log.write(tostring(turn))
-            log.write("|")
-            log.write(tostring(ctx.depth))
-            log.write("\n")
+            -- Build CSV line in buffer (pipe-delimited)
+            local line = "Student|" .. s_msg .. "|Teacher|" .. t_msg .. "|" ..
+                        ctx.current_topic .. "|" .. ctx.emotional_state .. "|" ..
+                        tostring(turn) .. "|" .. tostring(ctx.depth) .. "\n"
+            table.insert(log_buffer, line)
             
-            s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
+            s_msg = generateResponse("student", ctx, s_p.traits)
             ctx = addExchange(ctx_id, "Student", s_msg)
             total = total + 1
         end
-        log.close()
         
-        s_p = evolvePersonality("student", "student", true, 0.8)
-        t_p = evolvePersonality("teacher", "teacher", true, 0.9)
-        if fs.exists(SWAP_DISK .. "/c_c" .. conv) then
-            fs.delete(SWAP_DISK .. "/c_c" .. conv)
+        s_p = evolvePersonality(student, true, 0.8)
+        t_p = evolvePersonality(teacher, true, 0.9)
+        
+        deleteContext(ctx_id)
+        
+        -- Write buffer to RAID every 50 conversations to avoid memory buildup
+        if (conv - start_conv + 1) % 50 == 0 then
+            csv_data = csv_data .. table.concat(log_buffer)
+            if raid then
+                raid.write("training/conversation_log.csv", csv_data)
+            else
+                if not fs.exists("/training") then fs.makeDir("/training") end
+                local f = fs.open("/training/conversation_log.csv", "w")
+                f.write(csv_data)
+                f.close()
+            end
+            log_buffer = {}  -- Clear buffer
         end
         
         if (conv - start_conv + 1) % 100 == 0 then
             print(string.format("Batch: %d/%d", conv - start_conv + 1, end_conv - start_conv + 1))
         end
         
-        -- Yield every 25 conversations (optimized from 10)
         if (conv - start_conv + 1) % 25 == 0 then
             os.sleep(0)
         end
     end
     
-    local final_s = readPersonality("student")
-    local final_t = readPersonality("teacher")
+    -- Final write of remaining buffer
+    if #log_buffer > 0 then
+        csv_data = csv_data .. table.concat(log_buffer)
+        if raid then
+            raid.write("training/conversation_log.csv", csv_data)
+        else
+            if not fs.exists("/training") then fs.makeDir("/training") end
+            local f = fs.open("/training/conversation_log.csv", "w")
+            f.write(csv_data)
+            f.close()
+        end
+    end
+    
+    local final_s = readPersonality("student", student.drive)
+    local final_t = readPersonality("teacher", teacher.drive)
     
     print(string.format("Batch complete: %d conversations, %.1f sec", end_conv - start_conv + 1, os.clock() - start_time))
     
@@ -322,10 +454,12 @@ function M.createAdvancedTrainingSession(options)
     options = options or {}
     local total_conversations = options.conversations or 1000
     local turns = options.turns or 8
+    local BATCH_SIZE = 600  -- Increased from 300! We have 6 drives now!
     
-    print("=== BATCH TRAINING SYSTEM ===")
+    print("=== MULTI-DRIVE TRAINING SYSTEM ===")
+    initDrives()
     print(string.format("Total: %d conversations", total_conversations))
-    print(string.format("Batch size: %d (safe limit)", BATCH_SIZE))
+    print(string.format("Batch size: %d (6-drive rotation)", BATCH_SIZE))
     print("")
     
     local completed, _, s_conf, t_conf = loadProgress()
@@ -363,11 +497,18 @@ function M.createAdvancedTrainingSession(options)
     print(string.format("Total: %d conversations", completed))
     fs.delete("/training/progress.txt")
     
+    -- Cleanup all RAM drives
+    for _, drive in ipairs(RAM_DRIVES) do
+        if fs.exists(drive .. "/swap") then
+            fs.delete(drive .. "/swap")
+        end
+    end
+    
     return {exchanges = completed * (turns - 1), student_confidence = s_conf, teacher_confidence = t_conf}
 end
 
 function M.run()
-    print("=== AI TRAINER (BATCH SYSTEM) ===")
+    print("=== AI TRAINER (MULTI-DRIVE) ===")
     print("1. Quick (500)")
     print("2. Standard (2,000)")
     print("3. Deep (10,000)")
