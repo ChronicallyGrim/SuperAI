@@ -45,7 +45,7 @@ local function runTrainingPipeline(num_conversations)
     print("")
     
     -- Import training data into context-aware Markov
-    local imported = context_markov.importFromTrainingLog("/training/conversation_log.dat")
+    local imported = context_markov.importFromTrainingLog("/training/conversation_log.csv")
     
     -- Save context Markov
     context_markov.save("context_markov.dat")
@@ -54,8 +54,19 @@ local function runTrainingPipeline(num_conversations)
     print("=== PHASE 3: TRAINING SUPERAI ===")
     print("")
     
-    -- Check if markov module is available
-    local markov_exists = fs.exists("disk2/markov.lua") or fs.exists("markov.lua")
+    -- Check if markov module is available (search all drives)
+    local markov_exists = false
+    for _, side in ipairs({"top", "right", "bottom", "left", "back"}) do
+        for i = 0, 50 do
+            local name = side .. "_" .. i
+            if fs.exists(name .. "/markov.lua") then
+                markov_exists = true
+                break
+            end
+        end
+        if markov_exists then break end
+    end
+    markov_exists = markov_exists or fs.exists("markov.lua")
     
     if not markov_exists then
         print("WARNING: markov.lua not found!")
@@ -96,7 +107,7 @@ local function runTrainingPipeline(num_conversations)
     print("Data saved to:")
     print("  /training/student_ai.dat")
     print("  /training/teacher_ai.dat")
-    print("  /training/conversation_log.dat")
+    print("  /training/conversation_log.csv")
     print("  context_markov.dat")
     print("")
 end
@@ -128,8 +139,8 @@ elseif choice == "5" then
     print("")
     
     -- Check what exists
-    if fs.exists("/training/conversation_log.dat") then
-        local file = fs.open("/training/conversation_log.dat", "r")
+    if fs.exists("/training/conversation_log.csv") then
+        local file = fs.open("/training/conversation_log.csv", "r")
         local lines = 0
         while file.readLine() do
             lines = lines + 1
@@ -156,12 +167,12 @@ elseif choice == "6" then
     print("=== IMPORT EXISTING TRAINING ===")
     print("")
     
-    if not fs.exists("/training/conversation_log.dat") then
+    if not fs.exists("/training/conversation_log.csv") then
         print("ERROR: No training data found!")
         print("Run training first (options 1-4)")
     else
         print("Importing training data to context Markov...")
-        local imported = context_markov.importFromTrainingLog("/training/conversation_log.dat")
+        local imported = context_markov.importFromTrainingLog("/training/conversation_log.csv")
         context_markov.save("context_markov.dat")
         
         local stats = context_markov.getStats()
