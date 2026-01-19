@@ -2,16 +2,37 @@
 -- Natural conversational AI with personality and useful features
 
 -- ============================================================================
--- ADD DISK PATHS TO LUA'S SEARCH PATH
+-- ADD DISK PATHS TO LUA'S SEARCH PATH (DYNAMIC DETECTION)
 -- ============================================================================
 
--- Add all disk drives to Lua's module search path so require() can find modules
+-- Dynamically detect all disk drives and add to Lua's module search path
 if package and package.path then
-    package.path = package.path .. ";disk2/?.lua"  -- TOP drive (advanced modules)
-    package.path = package.path .. ";disk5/?.lua"  -- LEFT drive
-    package.path = package.path .. ";disk4/?.lua"  -- RIGHT drive
-    package.path = package.path .. ";disk3/?.lua"  -- BACK drive
-    package.path = package.path .. ";disk/?.lua"   -- BOTTOM drive
+    -- Find TOP drive (where code is installed)
+    local top_drive = nil
+    for i = 0, 50 do
+        local name = "top_" .. i
+        if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
+            top_drive = name
+            break
+        end
+    end
+    
+    if top_drive then
+        package.path = package.path .. ";" .. top_drive .. "/?.lua"
+        print("Loaded modules from: " .. top_drive)
+    else
+        print("WARNING: TOP drive not found! Using current directory.")
+    end
+    
+    -- Add RAID drives (for memory system)
+    for _, side in ipairs({"right", "bottom", "left", "back"}) do
+        for i = 0, 50 do
+            local name = side .. "_" .. i
+            if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
+                package.path = package.path .. ";" .. name .. "/?.lua"
+            end
+        end
+    end
 end
 
 local M = {}
@@ -21,6 +42,17 @@ local utils = require("utils")
 local personality = require("personality")
 local mood = require("mood")
 local responses = require("responses")
+
+-- Load RAID system
+local raid = nil
+local success_raid, raid_module = pcall(require, "raid_system")
+if success_raid then
+    raid = raid_module
+    raid.init()
+    print("RAID 0 system initialized")
+else
+    print("Warning: raid_system.lua not found - using local storage")
+end
 
 -- NEW: Advanced systems (with safe loading)
 local codeGen, dictionary, learning, neuralNet, machineLearning, largeNeural, trainedNetwork, markov
@@ -272,25 +304,26 @@ for _, side in ipairs({"top", "bottom", "left", "right", "front", "back"}) do
     end
 end
 
-local DISK_PATH = "/disk/superai_memory"
-local MEM_FILE = DISK_PATH .. "/memory.dat"
+-- Memory file path (use RAID if available)
+local MEM_FILE = "superai_memory/memory.dat"
 
 local function loadMemory()
-    if not fs.exists(MEM_FILE) then return end
+    local content = nil
     
-    local file = fs.open(MEM_FILE, "r")
-    local content = file.readAll()
-    file.close()
+    if raid and raid.exists(MEM_FILE) then
+        content = raid.read(MEM_FILE)
+    elseif fs.exists(MEM_FILE) then
+        local file = fs.open(MEM_FILE, "r")
+        content = file.readAll()
+        file.close()
+    end
     
     if content and content ~= "" then
         local loaded = textutils.unserialize(content)
         if loaded then
-            -- Deep merge loaded memory into the table
             for k, v in pairs(loaded) do
                 memory[k] = v
             end
-            
-            -- Sync the global name
             if memory.botName then
                 BOT_NAME = memory.botName
             end
@@ -299,12 +332,18 @@ local function loadMemory()
 end
 
 local function saveMemory()
-    if not fs.exists("/disk") then return end
-    if not fs.exists(DISK_PATH) then fs.makeDir(DISK_PATH) end
+    local content = textutils.serialize(memory)
     
-    local file = fs.open(MEM_FILE, "w")
-    file.write(textutils.serialize(memory))
-    file.close()
+    if raid then
+        raid.write(MEM_FILE, content)
+    else
+        if not fs.exists("superai_memory") then
+            fs.makeDir("superai_memory")
+        end
+        local file = fs.open(MEM_FILE, "w")
+        file.write(content)
+        file.close()
+    end
 end
 
 -- ============================================================================
