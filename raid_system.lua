@@ -9,11 +9,11 @@ local function detectRAIDDrives()
     local config = require("drive_config")
     local raid_drives = {}
     
-    -- Combine RIGHT and BOTTOM drives
-    for _, drive in ipairs(config.right) do
+    -- Combine LEFT and RIGHT drives (RAID storage)
+    for _, drive in ipairs(config.left) do
         table.insert(raid_drives, drive)
     end
-    for _, drive in ipairs(config.bottom) do
+    for _, drive in ipairs(config.right) do
         table.insert(raid_drives, drive)
     end
     
