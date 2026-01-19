@@ -4,20 +4,17 @@
 
 local M = {}
 
--- Detect RAID drives (using peripheral.find for wired networks)
+-- Detect RAID drives (using drive_config.lua)
 local function detectRAIDDrives()
-    local all_drives = {peripheral.find("drive")}
+    local config = require("drive_config")
     local raid_drives = {}
     
-    -- Categorize drives by their location
-    -- We want RIGHT and BOTTOM drives for RAID
-    for _, drive_wrap in ipairs(all_drives) do
-        local name = peripheral.getName(drive_wrap)
-        
-        -- Check if it's on RIGHT or BOTTOM side
-        if name:match("^right_") or name:match("^bottom_") then
-            table.insert(raid_drives, name)
-        end
+    -- Combine RIGHT and BOTTOM drives
+    for _, drive in ipairs(config.right) do
+        table.insert(raid_drives, drive)
+    end
+    for _, drive in ipairs(config.bottom) do
+        table.insert(raid_drives, drive)
     end
     
     return raid_drives
