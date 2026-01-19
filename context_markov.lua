@@ -276,10 +276,23 @@ function M.importFromTrainingLog(filepath)
         return 0
     end
     
-    print("Importing training data with context tags...")
+    -- Check if it's CSV format (comma or pipe delimited)
+    local is_csv = filepath:find("%.csv$") ~= nil
+    local is_pipe_delimited = false
+    
+    print("Importing training data" .. (is_csv and " (CSV format)" or "") .. "...")
     local file = fs.open(filepath, "r")
     local imported = 0
     local line_num = 0
+    
+    if is_csv then
+        -- Check if first line is pipe-delimited
+        local first_line = file.readLine()
+        if first_line and first_line:find("|") then
+            is_pipe_delimited = true
+        end
+        line_num = 1
+    end
     
     while true do
         local line = file.readLine()
@@ -287,35 +300,85 @@ function M.importFromTrainingLog(filepath)
         
         line_num = line_num + 1
         
-        local success, exchange = pcall(textutils.unserialize, line)
-        if success and exchange then
-            -- Extract context from logged exchange
-            local context_tags = exchange.context or {}
+        if is_csv then
+            local fields
             
-            -- Create tag list
-            local tags = {}
-            if type(context_tags) == "table" then
-                if context_tags.topic then
-                    table.insert(tags, "topic:" .. context_tags.topic)
+            if is_pipe_delimited then
+                -- Simple split on pipe
+                fields = {}
+                for field in line:gmatch("[^|]+") do
+                    table.insert(fields, field)
                 end
-                if context_tags.emotional_state then
-                    table.insert(tags, "emotion:" .. context_tags.emotional_state)
-                end
-                if context_tags.turn then
-                    if context_tags.turn == 1 then
-                        table.insert(tags, "conversation_start")
-                    elseif context_tags.turn > 5 then
-                        table.insert(tags, "deep_conversation")
+            else
+                -- Parse CSV: speaker_a,message_a,speaker_b,message_b,topic,turn
+            if is_pipe_delimited then
+                -- Already parsed above
+            else
+                -- Parse complex CSV with quotes
+                local function csvParse(csvLine)
+                local fields = {}
+                local field = ""
+                local in_quotes = false
+                
+                for i = 1, #csvLine do
+                    local char = csvLine:sub(i, i)
+                    if char == '"' then
+                        in_quotes = not in_quotes
+                    elseif char == ',' and not in_quotes then
+                        table.insert(fields, field)
+                        field = ""
                     else
-                        table.insert(tags, "mid_conversation")
+                        field = field .. char
                     end
                 end
+                table.insert(fields, field)
+                return fields
             end
             
-            -- Train both directions
-            if exchange.message_a and exchange.message_b then
-                M.trainWithContext(exchange.message_a, exchange.message_b, tags)
+                fields = csvParse(line)
+            end
+            if #fields >= 5 then
+                local tags = {fields[5]}  -- topic
+                if fields[6] then
+                    local turn = tonumber(fields[6])
+                    if turn and turn == 1 then
+                        table.insert(tags, "conversation_start")
+                    elseif turn and turn > 5 then
+                        table.insert(tags, "deep_conversation")
+                    end
+                end
+                
+                M.trainWithContext(fields[2], fields[4], tags)  -- message_a, message_b
                 imported = imported + 1
+            end
+        else
+            -- Original serialize format
+            local success, exchange = pcall(textutils.unserialize, line)
+            if success and exchange then
+                local context_tags = exchange.context or {}
+                local tags = {}
+                if type(context_tags) == "table" then
+                    if context_tags.topic then
+                        table.insert(tags, "topic:" .. context_tags.topic)
+                    end
+                    if context_tags.emotional_state then
+                        table.insert(tags, "emotion:" .. context_tags.emotional_state)
+                    end
+                    if context_tags.turn then
+                        if context_tags.turn == 1 then
+                            table.insert(tags, "conversation_start")
+                        elseif context_tags.turn > 5 then
+                            table.insert(tags, "deep_conversation")
+                        else
+                            table.insert(tags, "mid_conversation")
+                        end
+                    end
+                end
+                
+                if exchange.message_a and exchange.message_b then
+                    M.trainWithContext(exchange.message_a, exchange.message_b, tags)
+                    imported = imported + 1
+                end
             end
         end
         
