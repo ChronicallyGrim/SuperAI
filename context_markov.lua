@@ -310,10 +310,6 @@ function M.importFromTrainingLog(filepath)
                     table.insert(fields, field)
                 end
             else
-                -- Parse CSV: speaker_a,message_a,speaker_b,message_b,topic,turn
-            if is_pipe_delimited then
-                -- Already parsed above
-            else
                 -- Parse complex CSV with quotes
                 local function csvParse(csvLine)
                 local fields = {}
