@@ -340,6 +340,7 @@ function M.createAdvancedTrainingSession(options)
     
     local log = fs.open("/training/conversation_log.csv", "w")
     log.writeLine("speaker_a,message_a,speaker_b,message_b,topic,emotion,turn,depth")
+    log.close()
     
     for conv = 1, num do
         local ctx_id = "conv" .. conv
@@ -352,19 +353,39 @@ function M.createAdvancedTrainingSession(options)
         local s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
         local ctx = addExchange(ctx_id, "Student", s_msg)
         
+        -- Open log in append mode for THIS conversation
+        log = fs.open("/training/conversation_log.csv", "a")
+        
         for turn = 1, turns - 1 do
             local t_msg = generateResponse("teacher", ctx_id, "teacher", t_p.traits)
             ctx = addExchange(ctx_id, "Teacher", t_msg)
             
-            log.writeLine(csvEscape("Student") .. "," .. csvEscape(s_msg) .. "," ..
-                         csvEscape("Teacher") .. "," .. csvEscape(t_msg) .. "," ..
-                         csvEscape(ctx.current_topic) .. "," .. csvEscape(ctx.emotional_state) .. "," ..
-                         turn .. "," .. ctx.depth)
+            -- Write each field separately to avoid string concatenation in memory
+            log.write(csvEscape("Student"))
+            log.write(",")
+            log.write(csvEscape(s_msg))
+            log.write(",")
+            log.write(csvEscape("Teacher"))
+            log.write(",")
+            log.write(csvEscape(t_msg))
+            log.write(",")
+            log.write(csvEscape(ctx.current_topic))
+            log.write(",")
+            log.write(csvEscape(ctx.emotional_state))
+            log.write(",")
+            log.write(tostring(turn))
+            log.write(",")
+            log.write(tostring(ctx.depth))
+            log.write("\n")
             
             s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
             ctx = addExchange(ctx_id, "Student", s_msg)
             total = total + 1
         end
+        
+        -- Close after each conversation to flush buffer
+        log.close()
+        log = nil
         
         -- Evolve
         s_p = evolvePersonality("student", "student", true, 0.8)
@@ -388,7 +409,7 @@ function M.createAdvancedTrainingSession(options)
         end
     end
     
-    log.close()
+    -- No need to close log - already closed after each conversation
     
     -- Final save (NOW we can use serialize safely)
     local final_s = readPersonality("student")
