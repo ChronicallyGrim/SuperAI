@@ -1,55 +1,134 @@
--- advanced_ai_trainer.lua (ULTIMATE - Full Intelligence + No Memory Limits)
--- Virtual memory for ALL data structures + CSV logging to avoid serialize()
+-- advanced_ai_trainer.lua (ZERO COMPROMISE - Manual encoding, no serialize!)
+-- Writes raw data structures manually to avoid ALL serialize() calls during training
 
 local M = {}
 
-local SWAP_DISK = "disk4"  -- RIGHT drive used as virtual RAM
+local SWAP_DISK = "disk4"
 
 -- ============================================================================
--- DISK-BACKED VIRTUAL MEMORY - NO RAM USAGE!
+-- MANUAL DATA ENCODING - NO SERIALIZE!
 -- ============================================================================
 
-local function swapWrite(key, data)
-    local file = fs.open(SWAP_DISK .. "/swap/" .. key, "w")
-    file.write(textutils.serialize(data))
-    file.close()
-end
-
-local function swapRead(key)
-    local path = SWAP_DISK .. "/swap/" .. key
-    if not fs.exists(path) then return nil end
-    local file = fs.open(path, "r")
-    local data = textutils.unserialize(file.readAll())
-    file.close()
-    return data
-end
-
-local function swapDelete(key)
-    if fs.exists(SWAP_DISK .. "/swap/" .. key) then
-        fs.delete(SWAP_DISK .. "/swap/" .. key)
+-- Write personality manually (NO serialize!)
+local function writePersonality(id, role, traits, metrics)
+    local f = fs.open(SWAP_DISK .. "/p_" .. id, "w")
+    f.writeLine(role)
+    -- Traits (5 values for student, 5 for teacher)
+    if role == "student" then
+        f.writeLine(tostring(traits.curiosity))
+        f.writeLine(tostring(traits.enthusiasm))
+        f.writeLine(tostring(traits.depth))
+        f.writeLine(tostring(traits.humor))
+        f.writeLine(tostring(traits.creativity))
+    else
+        f.writeLine(tostring(traits.helpfulness))
+        f.writeLine(tostring(traits.patience))
+        f.writeLine(tostring(traits.depth))
+        f.writeLine(tostring(traits.clarity))
+        f.writeLine(tostring(traits.encouragement))
     end
+    -- Metrics
+    f.writeLine(tostring(metrics.conversations))
+    f.writeLine(tostring(metrics.successful_exchanges))
+    f.writeLine(tostring(metrics.confidence))
+    f.writeLine(tostring(metrics.learning_rate))
+    f.close()
+end
+
+-- Read personality manually
+local function readPersonality(id)
+    local path = SWAP_DISK .. "/p_" .. id
+    if not fs.exists(path) then return nil end
+    
+    local f = fs.open(path, "r")
+    local role = f.readLine()
+    local traits = {}
+    
+    if role == "student" then
+        traits.curiosity = tonumber(f.readLine())
+        traits.enthusiasm = tonumber(f.readLine())
+        traits.depth = tonumber(f.readLine())
+        traits.humor = tonumber(f.readLine())
+        traits.creativity = tonumber(f.readLine())
+    else
+        traits.helpfulness = tonumber(f.readLine())
+        traits.patience = tonumber(f.readLine())
+        traits.depth = tonumber(f.readLine())
+        traits.clarity = tonumber(f.readLine())
+        traits.encouragement = tonumber(f.readLine())
+    end
+    
+    local metrics = {
+        conversations = tonumber(f.readLine()),
+        successful_exchanges = tonumber(f.readLine()),
+        confidence = tonumber(f.readLine()),
+        learning_rate = tonumber(f.readLine())
+    }
+    f.close()
+    
+    return {id = id, role = role, traits = traits, metrics = metrics}
+end
+
+-- Write context manually (NO serialize!)
+local function writeContext(id, topic, emotional_state, depth, question_streak, exchanges)
+    local f = fs.open(SWAP_DISK .. "/c_" .. id, "w")
+    f.writeLine(topic)
+    f.writeLine(emotional_state)
+    f.writeLine(tostring(depth))
+    f.writeLine(tostring(question_streak))
+    f.writeLine(tostring(#exchanges))
+    for _, ex in ipairs(exchanges) do
+        f.writeLine(ex.speaker)
+        f.writeLine(ex.message:gsub("\n", "\\n"))  -- Escape newlines
+    end
+    f.close()
+end
+
+-- Read context manually
+local function readContext(id)
+    local path = SWAP_DISK .. "/c_" .. id
+    if not fs.exists(path) then return nil end
+    
+    local f = fs.open(path, "r")
+    local topic = f.readLine()
+    local emotional_state = f.readLine()
+    local depth = tonumber(f.readLine())
+    local question_streak = tonumber(f.readLine())
+    local count = tonumber(f.readLine())
+    
+    local exchanges = {}
+    for i = 1, count do
+        local speaker = f.readLine()
+        local message = f.readLine():gsub("\\n", "\n")
+        table.insert(exchanges, {speaker = speaker, message = message})
+    end
+    f.close()
+    
+    return {
+        id = id,
+        current_topic = topic,
+        emotional_state = emotional_state,
+        depth = depth,
+        question_streak = question_streak,
+        recent_exchanges = exchanges
+    }
 end
 
 -- ============================================================================
--- FULL PERSONALITY SYSTEM (100% disk-backed)
+-- PERSONALITY SYSTEM
 -- ============================================================================
 
 local function createPersonality(id, role)
-    local personality = {
-        id = id,
-        role = role,
-        traits = {},
-        recent_topics = {},
-        metrics = {
-            conversations = 0,
-            successful_exchanges = 0,
-            confidence = role == "student" and 0.5 or 0.7,
-            learning_rate = 1.0
-        }
+    local traits = {}
+    local metrics = {
+        conversations = 0,
+        successful_exchanges = 0,
+        confidence = role == "student" and 0.5 or 0.7,
+        learning_rate = 1.0
     }
     
     if role == "student" then
-        personality.traits = {
+        traits = {
             curiosity = 0.8,
             enthusiasm = 0.7,
             depth = 0.5,
@@ -57,7 +136,7 @@ local function createPersonality(id, role)
             creativity = 0.6
         }
     else
-        personality.traits = {
+        traits = {
             helpfulness = 0.9,
             patience = 0.8,
             depth = 0.7,
@@ -66,284 +145,155 @@ local function createPersonality(id, role)
         }
     end
     
-    swapWrite("personality_" .. id, personality)
-    return {id = id}  -- Only ID in RAM!
+    writePersonality(id, role, traits, metrics)
+    return {id = id}
 end
 
-local function getPersonality(handle)
-    return swapRead("personality_" .. handle.id)
-end
-
-local function updatePersonality(handle, personality)
-    swapWrite("personality_" .. handle.id, personality)
-end
-
-local function evolvePersonality(handle, success, engagement)
-    local p = getPersonality(handle)
+local function evolvePersonality(id, role, success, engagement)
+    local p = readPersonality(id)
+    
     if success then
         p.metrics.confidence = math.min(1.0, p.metrics.confidence + 0.002)
         p.metrics.successful_exchanges = p.metrics.successful_exchanges + 1
     end
+    
     if engagement > 0.7 then
-        -- Only evolve curiosity if it exists (student has it, teacher doesn't)
         if p.traits.curiosity then
             p.traits.curiosity = math.min(1.0, p.traits.curiosity + 0.005)
         end
-        -- Evolve helpfulness for teacher
         if p.traits.helpfulness then
             p.traits.helpfulness = math.min(1.0, p.traits.helpfulness + 0.003)
         end
     end
+    
     p.metrics.conversations = p.metrics.conversations + 1
-    updatePersonality(handle, p)
+    writePersonality(id, p.role, p.traits, p.metrics)
+    
+    return p
 end
 
 -- ============================================================================
--- CONVERSATION CONTEXT (Full 5-exchange history on disk)
+-- CONTEXT SYSTEM
 -- ============================================================================
 
 local function createContext(id)
-    local context = {
-        id = id,
-        recent_exchanges = {},  -- Last 5 exchanges
-        current_topic = "general",
-        emotional_state = "neutral",
-        depth = 0,
-        question_streak = 0
-    }
-    swapWrite("context_" .. id, context)
+    writeContext(id, "general", "neutral", 0, 0, {})
     return {id = id}
 end
 
-local function getContext(handle)
-    return swapRead("context_" .. handle.id)
-end
-
-local function updateContext(handle, context)
-    swapWrite("context_" .. handle.id, context)
-end
-
-local function addExchange(context_handle, speaker, message)
-    local ctx = getContext(context_handle)
+local function addExchange(ctx_id, speaker, message)
+    local ctx = readContext(ctx_id)
     
-    table.insert(ctx.recent_exchanges, {
-        speaker = speaker,
-        message = message,
-        timestamp = os.clock()
-    })
-    
-    -- Keep last 5 exchanges
+    table.insert(ctx.recent_exchanges, {speaker = speaker, message = message})
     if #ctx.recent_exchanges > 5 then
         table.remove(ctx.recent_exchanges, 1)
     end
     
-    -- Advanced topic detection
+    -- Topic detection
     local msg_lower = message:lower()
-    if msg_lower:find("code") or msg_lower:find("program") or msg_lower:find("function") or msg_lower:find("variable") then
+    if msg_lower:find("code") or msg_lower:find("program") or msg_lower:find("function") then
         ctx.current_topic = "programming"
-    elseif msg_lower:find("learn") or msg_lower:find("study") or msg_lower:find("understand") or msg_lower:find("teach") then
+    elseif msg_lower:find("learn") or msg_lower:find("study") or msg_lower:find("understand") then
         ctx.current_topic = "learning"
-    elseif msg_lower:find("think") or msg_lower:find("feel") or msg_lower:find("like") or msg_lower:find("prefer") then
+    elseif msg_lower:find("think") or msg_lower:find("feel") or msg_lower:find("like") then
         ctx.current_topic = "personal"
-    elseif msg_lower:find("ai") or msg_lower:find("intelligence") or msg_lower:find("neural") or msg_lower:find("machine") then
+    elseif msg_lower:find("ai") or msg_lower:find("intelligence") or msg_lower:find("neural") then
         ctx.current_topic = "ai"
-    elseif msg_lower:find("game") or msg_lower:find("play") or msg_lower:find("minecraft") then
+    elseif msg_lower:find("game") or msg_lower:find("play") then
         ctx.current_topic = "gaming"
     end
     
-    -- Emotional state detection
-    if msg_lower:find("awesome") or msg_lower:find("great") or msg_lower:find("amazing") or msg_lower:find("love") then
+    -- Emotional state
+    if msg_lower:find("awesome") or msg_lower:find("great") or msg_lower:find("amazing") then
         ctx.emotional_state = "positive"
-    elseif msg_lower:find("confus") or msg_lower:find("hard") or msg_lower:find("difficult") or msg_lower:find("stuck") then
+    elseif msg_lower:find("confus") or msg_lower:find("hard") or msg_lower:find("difficult") then
         ctx.emotional_state = "confused"
-    elseif msg_lower:find("interest") or msg_lower:find("curious") or msg_lower:find("wonder") or msg_lower:find("how") then
+    elseif msg_lower:find("interest") or msg_lower:find("curious") or msg_lower:find("wonder") then
         ctx.emotional_state = "curious"
-    elseif msg_lower:find("frustrat") or msg_lower:find("annoying") or msg_lower:find("tired") then
+    elseif msg_lower:find("frustrat") or msg_lower:find("annoying") then
         ctx.emotional_state = "frustrated"
     else
         ctx.emotional_state = "neutral"
     end
     
     ctx.depth = ctx.depth + 1
+    ctx.question_streak = message:find("?") and (ctx.question_streak + 1) or 0
     
-    if message:find("?") then
-        ctx.question_streak = ctx.question_streak + 1
-    else
-        ctx.question_streak = 0
-    end
-    
-    updateContext(context_handle, ctx)
+    writeContext(ctx.id, ctx.current_topic, ctx.emotional_state, ctx.depth, ctx.question_streak, ctx.recent_exchanges)
+    return ctx
 end
 
 -- ============================================================================
--- INTELLIGENT RESPONSE GENERATOR (Full templates, all on disk!)
+-- RESPONSE TEMPLATES (Loaded once, reused)
 -- ============================================================================
 
-local function loadTemplates(role)
-    if role == "student" then
-        return {
-            greetings = {"Hey! How's it going?", "Hi! What's up?", "Hello! What's new?", "Yo! Ready to learn?", "Hey there! What are we learning today?"},
-            questions = {
-                "How does that work exactly?",
-                "Can you explain that more?",
-                "What do you mean by that?",
-                "Why is that important?",
-                "What's the best way to learn that?",
-                "Is there more to it?",
-                "What are the key concepts?",
-                "How would I use that?",
-                "Can you give an example?",
-                "What makes that different?"
-            },
-            reactions = {
-                "That's really interesting!",
-                "Oh, I see what you mean!",
-                "That makes a lot of sense!",
-                "I never thought about it that way!",
-                "Cool, thanks for explaining!",
-                "Wow, that's fascinating!",
-                "This is really helpful!",
-                "Ah, now I get it!",
-                "That's actually pretty cool!",
-                "Interesting perspective!"
-            },
-            acknowledgments = {
-                "Got it!",
-                "I understand!",
-                "That helps!",
-                "Makes sense!",
-                "Awesome!",
-                "Oh I see!",
-                "That's clear!",
-                "Perfect!",
-                "Okay!",
-                "Right!"
-            },
-            deep_questions = {
-                "What's the underlying principle?",
-                "How does this connect to other concepts?",
-                "What are the real-world applications?",
-                "Why did they design it that way?",
-                "What problems does this solve?"
-            }
-        }
-    else
-        return {
-            greetings = {"Hey! Ready to learn?", "Hi there! What would you like to know?", "Hello! Let's dive in!", "Great to see you! What should we explore?"},
-            explanations = {
-                "Great question! Let me break that down for you.",
-                "Think of it this way: it's like organizing information efficiently.",
-                "The key concept here is understanding how the parts work together.",
-                "It's simpler than it sounds once you see the pattern.",
-                "Let me explain it step by step.",
-                "Here's a good way to think about it.",
-                "The important thing to understand is this.",
-                "Imagine it like this.",
-                "The core idea is actually quite elegant.",
-                "Let me give you a clearer picture."
-            },
-            encouragements = {
-                "You're getting it!",
-                "Exactly right!",
-                "Good thinking!",
-                "Perfect!",
-                "That's the idea!",
-                "You've got it!",
-                "Well done!",
-                "Spot on!",
-                "Nice!",
-                "Great insight!"
-            },
-            follow_ups = {
-                "Does that make sense?",
-                "Want me to explain more?",
-                "Any questions about that?",
-                "Ready to move on?",
-                "Got it?",
-                "Is that clear?",
-                "Need another example?",
-                "Want to dive deeper?",
-                "Make sense so far?",
-                "Following along?"
-            },
-            elaborations = {
-                "To add to that,",
-                "Another way to think about it:",
-                "Building on that idea,",
-                "Here's an interesting detail:",
-                "What's also cool is"
-            }
-        }
-    end
-end
+local STUDENT_TEMPLATES = {
+    greetings = {"Hey! How's it going?", "Hi! What's up?", "Hello! What's new?", "Yo! Ready to learn?"},
+    questions = {"How does that work exactly?", "Can you explain that more?", "What do you mean by that?", "Why is that important?", "What's the best way to learn that?", "Is there more to it?", "What are the key concepts?", "How would I use that?", "Can you give an example?"},
+    reactions = {"That's really interesting!", "Oh, I see what you mean!", "That makes a lot of sense!", "I never thought about it that way!", "Cool, thanks for explaining!", "Wow, that's fascinating!", "This is really helpful!", "Ah, now I get it!"},
+    acknowledgments = {"Got it!", "I understand!", "That helps!", "Makes sense!", "Awesome!", "Oh I see!", "That's clear!", "Perfect!"},
+    deep_questions = {"What's the underlying principle?", "How does this connect to other concepts?", "What are the real-world applications?", "Why did they design it that way?"}
+}
 
-local function chooseRandom(list)
+local TEACHER_TEMPLATES = {
+    greetings = {"Hey! Ready to learn?", "Hi there! What would you like to know?", "Hello! Let's dive in!"},
+    explanations = {"Great question! Let me break that down for you.", "Think of it this way: it's like organizing information efficiently.", "The key concept here is understanding how the parts work together.", "It's simpler than it sounds once you see the pattern.", "Let me explain it step by step.", "Here's a good way to think about it.", "The important thing to understand is this.", "Imagine it like this."},
+    encouragements = {"You're getting it!", "Exactly right!", "Good thinking!", "Perfect!", "That's the idea!", "You've got it!", "Well done!", "Spot on!"},
+    follow_ups = {"Does that make sense?", "Want me to explain more?", "Any questions about that?", "Ready to move on?", "Got it?", "Is that clear?"},
+    elaborations = {"To add to that,", "Another way to think about it:", "Building on that idea:", "Here's an interesting detail:"}
+}
+
+local function choose(list)
     return list[math.random(#list)]
 end
 
-local function generateResponse(personality_handle, context_handle)
-    local personality = getPersonality(personality_handle)
-    local context = getContext(context_handle)
-    local templates = loadTemplates(personality.role)
-    
-    local last_msg = #context.recent_exchanges > 0 and 
-        context.recent_exchanges[#context.recent_exchanges].message or nil
+-- ============================================================================
+-- RESPONSE GENERATOR
+-- ============================================================================
+
+local function generateResponse(personality_id, context_id, role, traits)
+    local ctx = readContext(context_id)
+    local last_msg = #ctx.recent_exchanges > 0 and ctx.recent_exchanges[#ctx.recent_exchanges].message or nil
     local is_question = last_msg and last_msg:find("?") ~= nil
     
     local response = ""
     
-    if personality.role == "student" then
-        -- Greeting
+    if role == "student" then
         if not last_msg then
-            response = chooseRandom(templates.greetings)
-        
-        -- Answering question
+            response = choose(STUDENT_TEMPLATES.greetings)
         elseif is_question then
-            response = chooseRandom(templates.acknowledgments)
-            
-            if math.random() < personality.traits.curiosity then
-                if context.depth > 7 and math.random() < 0.3 then
-                    response = response .. " " .. chooseRandom(templates.deep_questions)
+            response = choose(STUDENT_TEMPLATES.acknowledgments)
+            if math.random() < traits.curiosity then
+                if ctx.depth > 7 and math.random() < 0.3 then
+                    response = response .. " " .. choose(STUDENT_TEMPLATES.deep_questions)
                 else
-                    response = response .. " " .. chooseRandom(templates.questions)
+                    response = response .. " " .. choose(STUDENT_TEMPLATES.questions)
                 end
             end
-        
-        -- Deep conversation reaction
-        elseif context.depth > 5 and math.random() < 0.4 then
-            response = chooseRandom(templates.reactions)
-        
-        -- Regular questions
+        elseif ctx.depth > 5 and math.random() < 0.4 then
+            response = choose(STUDENT_TEMPLATES.reactions)
         else
-            if context.depth > 8 and math.random() < 0.25 then
-                response = chooseRandom(templates.deep_questions)
-            else
-                response = chooseRandom(templates.questions)
-            end
+            response = choose(STUDENT_TEMPLATES.questions)
         end
-        
-    else -- teacher
+    else
         if is_question then
-            response = chooseRandom(templates.explanations)
-            
-            if context.depth > 6 and math.random() < 0.2 then
-                response = chooseRandom(templates.elaborations) .. " " .. response:lower()
+            response = choose(TEACHER_TEMPLATES.explanations)
+            if ctx.depth > 6 and math.random() < 0.2 then
+                response = choose(TEACHER_TEMPLATES.elaborations) .. " " .. response:lower()
             end
-            
-            if math.random() < 0.3 and context.question_streak < 2 then
-                response = response .. " " .. chooseRandom(templates.follow_ups)
+            if math.random() < 0.3 and ctx.question_streak < 2 then
+                response = response .. " " .. choose(TEACHER_TEMPLATES.follow_ups)
             end
         else
-            response = chooseRandom(templates.encouragements)
+            response = choose(TEACHER_TEMPLATES.encouragements)
         end
     end
     
-    templates = nil  -- Clear templates from RAM
     return response
 end
 
 -- ============================================================================
--- CSV LOGGING (NO serialize() - the memory killer!)
+-- CSV LOGGING
 -- ============================================================================
 
 local function csvEscape(str)
@@ -351,22 +301,20 @@ local function csvEscape(str)
 end
 
 -- ============================================================================
--- MAIN TRAINING SESSION
+-- MAIN TRAINING
 -- ============================================================================
 
 function M.createAdvancedTrainingSession(options)
     options = options or {}
-    local num_conversations = options.conversations or 1000
-    local turns_per_conversation = options.turns or 8
+    local num = options.conversations or 1000
+    local turns = options.turns or 8
     
-    print("=== ADVANCED AI TRAINING (ULTIMATE) ===")
+    print("=== ADVANCED AI TRAINING (ZERO COMPROMISE) ===")
     print("")
-    print("Initializing virtual memory system...")
     
     if not fs.exists(SWAP_DISK) then
-        print("ERROR: Swap disk (" .. SWAP_DISK .. ") not found!")
-        print("Please insert a disk in the RIGHT drive.")
-        return {exchanges = 0, error = "No swap disk"}
+        print("ERROR: Swap disk not found!")
+        return {exchanges = 0}
     end
     
     if fs.exists(SWAP_DISK .. "/swap") then
@@ -374,77 +322,65 @@ function M.createAdvancedTrainingSession(options)
     end
     fs.makeDir(SWAP_DISK .. "/swap")
     
-    print("Virtual memory ready! (Using " .. SWAP_DISK .. " as swap)")
+    print("Virtual memory ready! (Manual encoding, NO serialize!)")
+    print(string.format("Training: %d conversations", num))
+    print("Full intelligence: 5-exchange context, 5 emotions, 5 topics, 40+ templates")
     print("")
     
     if not fs.exists("/training") then
         fs.makeDir("/training")
     end
     
-    print(string.format("Training: %d conversations x %d turns", num_conversations, turns_per_conversation))
-    print("Full intelligence: 5-exchange context, emotional states, 50+ templates")
-    print("")
+    local start = os.clock()
+    local total = 0
     
-    local start_time = os.clock()
-    local total_exchanges = 0
-    
-    -- Create AI personalities (tiny handles in RAM, full data on disk!)
+    -- Create personalities
     local student = createPersonality("student", "student")
     local teacher = createPersonality("teacher", "teacher")
     
-    -- CSV log (no serialize!)
-    local log_file = fs.open("/training/conversation_log.csv", "w")
-    log_file.writeLine("speaker_a,message_a,speaker_b,message_b,topic,emotional_state,turn,depth")
+    local log = fs.open("/training/conversation_log.csv", "w")
+    log.writeLine("speaker_a,message_a,speaker_b,message_b,topic,emotion,turn,depth")
     
-    for conv = 1, num_conversations do
-        -- Create context (on disk!)
-        local context = createContext("conv_" .. conv)
+    for conv = 1, num do
+        local ctx_id = "conv" .. conv
+        createContext(ctx_id)
         
-        -- Student starts
-        local student_msg = generateResponse(student, context)
-        addExchange(context, "Student", student_msg)
+        -- Get initial traits
+        local s_p = readPersonality("student")
+        local t_p = readPersonality("teacher")
         
-        for turn = 1, turns_per_conversation - 1 do
-            -- Teacher responds
-            local teacher_msg = generateResponse(teacher, context)
-            addExchange(context, "Teacher", teacher_msg)
+        local s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
+        local ctx = addExchange(ctx_id, "Student", s_msg)
+        
+        for turn = 1, turns - 1 do
+            local t_msg = generateResponse("teacher", ctx_id, "teacher", t_p.traits)
+            ctx = addExchange(ctx_id, "Teacher", t_msg)
             
-            -- Get context for logging
-            local ctx = getContext(context)
+            log.writeLine(csvEscape("Student") .. "," .. csvEscape(s_msg) .. "," ..
+                         csvEscape("Teacher") .. "," .. csvEscape(t_msg) .. "," ..
+                         csvEscape(ctx.current_topic) .. "," .. csvEscape(ctx.emotional_state) .. "," ..
+                         turn .. "," .. ctx.depth)
             
-            -- Write CSV (tiny memory footprint!)
-            log_file.writeLine(
-                csvEscape("Student") .. "," .. csvEscape(student_msg) .. "," ..
-                csvEscape("Teacher") .. "," .. csvEscape(teacher_msg) .. "," ..
-                csvEscape(ctx.current_topic) .. "," .. csvEscape(ctx.emotional_state) .. "," ..
-                turn .. "," .. ctx.depth
-            )
-            
-            -- Student responds
-            student_msg = generateResponse(student, context)
-            addExchange(context, "Student", student_msg)
-            
-            total_exchanges = total_exchanges + 1
+            s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
+            ctx = addExchange(ctx_id, "Student", s_msg)
+            total = total + 1
         end
         
-        -- Evolve personalities
-        evolvePersonality(student, true, 0.8)
-        evolvePersonality(teacher, true, 0.9)
+        -- Evolve
+        s_p = evolvePersonality("student", "student", true, 0.8)
+        t_p = evolvePersonality("teacher", "teacher", true, 0.9)
         
-        -- Clean up context
-        swapDelete("context_conv_" .. conv)
+        -- Delete context
+        if fs.exists(SWAP_DISK .. "/c_conv" .. conv) then
+            fs.delete(SWAP_DISK .. "/c_conv" .. conv)
+        end
         
-        -- Progress
         if conv % 100 == 0 then
-            local elapsed = os.clock() - start_time
-            local eta = (num_conversations - conv) / (conv / elapsed)
-            
-            local s = getPersonality(student)
-            local t = getPersonality(teacher)
-            
+            local elapsed = os.clock() - start
+            local eta = (num - conv) / (conv / elapsed)
             print(string.format("Progress: %d/%d (%.1f%%) - ETA: %.0f sec", 
-                conv, num_conversations, (conv/num_conversations)*100, eta))
-            print(string.format("  Student: %.3f | Teacher: %.3f", s.metrics.confidence, t.metrics.confidence))
+                conv, num, (conv/num)*100, eta))
+            print(string.format("  Student: %.3f | Teacher: %.3f", s_p.metrics.confidence, t_p.metrics.confidence))
         end
         
         if conv % 50 == 0 then
@@ -452,72 +388,52 @@ function M.createAdvancedTrainingSession(options)
         end
     end
     
-    log_file.close()
+    log.close()
     
-    -- Save final states
-    local final_student = getPersonality(student)
-    local final_teacher = getPersonality(teacher)
+    -- Final save (NOW we can use serialize safely)
+    local final_s = readPersonality("student")
+    local final_t = readPersonality("teacher")
     
     local sf = fs.open("/training/student_ai.dat", "w")
-    sf.write(textutils.serialize(final_student))
+    sf.write(textutils.serialize(final_s))
     sf.close()
     
     local tf = fs.open("/training/teacher_ai.dat", "w")
-    tf.write(textutils.serialize(final_teacher))
+    tf.write(textutils.serialize(final_t))
     tf.close()
     
-    -- Clean up swap
+    -- Cleanup
     if fs.exists(SWAP_DISK .. "/swap") then
         fs.delete(SWAP_DISK .. "/swap")
     end
     
     print("")
-    print("=== TRAINING COMPLETE ===")
-    print(string.format("Total exchanges: %d", total_exchanges))
-    print(string.format("Time: %.1f seconds (%.0f exchanges/sec)", 
-        os.clock() - start_time, total_exchanges / (os.clock() - start_time)))
-    print(string.format("Student confidence: %.3f | Teacher confidence: %.3f",
-        final_student.metrics.confidence, final_teacher.metrics.confidence))
-    print("Data quality: MAXIMUM (5-exchange context, emotional states, 50+ templates)")
+    print("=== COMPLETE ===")
+    print(string.format("Exchanges: %d | Time: %.1f sec", total, os.clock() - start))
+    print("Quality: MAXIMUM (zero compromises)")
     
-    return {
-        exchanges = total_exchanges,
-        student_confidence = final_student.metrics.confidence,
-        teacher_confidence = final_teacher.metrics.confidence
-    }
+    return {exchanges = total, student_confidence = final_s.metrics.confidence, teacher_confidence = final_t.metrics.confidence}
 end
 
 function M.run()
-    print("=== ADVANCED AI TRAINER (ULTIMATE) ===")
-    print("")
-    print("Uses " .. SWAP_DISK .. " (RIGHT drive) as virtual memory.")
-    print("FULL intelligence - NO compromises!")
-    print("")
-    print("1. Quick (500 conversations)")
-    print("2. Standard (2,000 conversations)")
-    print("3. Deep (10,000 conversations)")
-    print("4. ULTIMATE (50,000 conversations)")
-    print("5. Exit")
-    print("")
+    print("=== AI TRAINER (ZERO COMPROMISE) ===")
+    print("1. Quick (500)")
+    print("2. Standard (2,000)")
+    print("3. Deep (10,000)")
+    print("4. ULTIMATE (50,000)")
     write("Choice: ")
-    
-    local choice = read()
-    print("")
-    
-    if choice == "1" then
+    local c = read()
+    if c == "1" then
         M.createAdvancedTrainingSession({conversations = 500, turns = 6})
-    elseif choice == "2" then
+    elseif c == "2" then
         M.createAdvancedTrainingSession({conversations = 2000, turns = 8})
-    elseif choice == "3" then
+    elseif c == "3" then
         M.createAdvancedTrainingSession({conversations = 10000, turns = 10})
-    elseif choice == "4" then
-        print("ULTIMATE training will take 1-2 hours!")
-        write("Type YES to confirm: ")
+    elseif c == "4" then
+        write("Type YES: ")
         if read():upper() == "YES" then
             M.createAdvancedTrainingSession({conversations = 50000, turns = 12})
         end
-    else
-        print("Exiting...")
     end
 end
 
