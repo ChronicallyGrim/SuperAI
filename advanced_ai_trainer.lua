@@ -272,10 +272,22 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
         for turn = 1, turns - 1 do
             local t_msg = generateResponse("teacher", ctx_id, "teacher", t_p.traits)
             ctx = addExchange(ctx_id, "Teacher", t_msg)
-            log.write(csvEscape("Student")) log.write(",") log.write(csvEscape(s_msg)) log.write(",")
-            log.write(csvEscape("Teacher")) log.write(",") log.write(csvEscape(t_msg)) log.write(",")
-            log.write(csvEscape(ctx.current_topic)) log.write(",") log.write(csvEscape(ctx.emotional_state)) log.write(",")
-            log.write(tostring(turn)) log.write(",") log.write(tostring(ctx.depth)) log.write("\n")
+            
+            -- Write directly, replace commas/newlines to avoid CSV issues
+            log.write("Student,")
+            log.write(s_msg:gsub(",", ";"):gsub("\n", " "))
+            log.write(",Teacher,")
+            log.write(t_msg:gsub(",", ";"):gsub("\n", " "))
+            log.write(",")
+            log.write(ctx.current_topic)
+            log.write(",")
+            log.write(ctx.emotional_state)
+            log.write(",")
+            log.write(tostring(turn))
+            log.write(",")
+            log.write(tostring(ctx.depth))
+            log.write("\n")
+            
             s_msg = generateResponse("student", ctx_id, "student", s_p.traits)
             ctx = addExchange(ctx_id, "Student", s_msg)
             total = total + 1
@@ -288,12 +300,12 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
             fs.delete(SWAP_DISK .. "/c_c" .. conv)
         end
         
-        if (conv - start_conv + 1) % 50 == 0 then
-            print(string.format("Batch progress: %d/%d", conv - start_conv + 1, end_conv - start_conv + 1))
+        if (conv - start_conv + 1) % 100 == 0 then
+            print(string.format("Batch: %d/%d", conv - start_conv + 1, end_conv - start_conv + 1))
         end
         
-        -- CRITICAL: Yield to prevent "too long without yielding" error
-        if (conv - start_conv + 1) % 10 == 0 then
+        -- Yield every 25 conversations (optimized from 10)
+        if (conv - start_conv + 1) % 25 == 0 then
             os.sleep(0)
         end
     end
@@ -342,8 +354,8 @@ function M.createAdvancedTrainingSession(options)
         print("")
         
         if completed < total_conversations then
-            print("Starting next batch in 3 seconds...")
-            os.sleep(3)
+            print("Next batch starting...")
+            os.sleep(0.5)
         end
     end
     
