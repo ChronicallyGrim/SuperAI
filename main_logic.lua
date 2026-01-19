@@ -7,31 +7,26 @@
 
 -- Dynamically detect all disk drives and add to Lua's module search path
 if package and package.path then
-    -- Find TOP drive (where code is installed)
+    -- Use peripheral.find to get all drives (works with wired modems!)
+    local all_drives = {peripheral.find("drive")}
     local top_drive = nil
-    for i = 0, 50 do
-        local name = "top_" .. i
-        if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
+    
+    for _, drive_wrap in ipairs(all_drives) do
+        local name = peripheral.getName(drive_wrap)
+        
+        -- Look for TOP drive (where code is installed)
+        if name:match("^top_") then
             top_drive = name
-            break
         end
+        
+        -- Add all drives to search path
+        package.path = package.path .. ";" .. name .. "/?.lua"
     end
     
     if top_drive then
-        package.path = package.path .. ";" .. top_drive .. "/?.lua"
         print("Loaded modules from: " .. top_drive)
     else
-        print("WARNING: TOP drive not found! Using current directory.")
-    end
-    
-    -- Add RAID drives (for memory system)
-    for _, side in ipairs({"right", "bottom", "left", "back"}) do
-        for i = 0, 50 do
-            local name = side .. "_" .. i
-            if peripheral.isPresent(name) and peripheral.getType(name) == "drive" then
-                package.path = package.path .. ";" .. name .. "/?.lua"
-            end
-        end
+        print("Using root filesystem for modules (no TOP drive)")
     end
 end
 
