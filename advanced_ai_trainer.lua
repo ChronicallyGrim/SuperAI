@@ -1,4 +1,4 @@
--- advanced_ai_trainer.lua (Optimized Medium Version)
+-- advanced_ai_trainer.lua (Optimized Medium Version - Fixed)
 -- Smart AI training with balanced memory usage and quality
 
 local M = {}
@@ -14,7 +14,7 @@ local function createPersonality(role)
             enthusiasm = 0.7,
             confidence = 0.5,
             conversations = 0,
-            recent_topics = {}  -- Only keep last 3 topics
+            recent_topics = {}
         }
     else
         return {
@@ -38,46 +38,44 @@ end
 -- SMART CONTEXT TRACKING (Last 3 exchanges only)
 -- ============================================================================
 
-local ConversationContext = {}
-
-function ConversationContext:new()
+local function createContext()
     return {
-        recent_exchanges = {},  -- Only last 3
+        recent_exchanges = {},
         current_topic = "general",
         depth = 0
     }
 end
 
-function ConversationContext:addExchange(speaker, message)
-    table.insert(self.recent_exchanges, {speaker = speaker, message = message})
+local function addExchange(context, speaker, message)
+    table.insert(context.recent_exchanges, {speaker = speaker, message = message})
     
     -- Keep only last 3 exchanges
-    if #self.recent_exchanges > 3 then
-        table.remove(self.recent_exchanges, 1)
+    if #context.recent_exchanges > 3 then
+        table.remove(context.recent_exchanges, 1)
     end
     
     -- Detect topic from keywords
     local msg_lower = message:lower()
     if msg_lower:find("code") or msg_lower:find("program") then
-        self.current_topic = "programming"
+        context.current_topic = "programming"
     elseif msg_lower:find("learn") or msg_lower:find("understand") then
-        self.current_topic = "learning"
+        context.current_topic = "learning"
     elseif msg_lower:find("think") or msg_lower:find("feel") then
-        self.current_topic = "personal"
+        context.current_topic = "personal"
     end
     
-    self.depth = self.depth + 1
+    context.depth = context.depth + 1
 end
 
-function ConversationContext:getLastMessage()
-    if #self.recent_exchanges > 0 then
-        return self.recent_exchanges[#self.recent_exchanges].message
+local function getLastMessage(context)
+    if #context.recent_exchanges > 0 then
+        return context.recent_exchanges[#context.recent_exchanges].message
     end
     return nil
 end
 
-function ConversationContext:wasQuestionAsked()
-    local last = self:getLastMessage()
+local function wasQuestionAsked(context)
+    local last = getLastMessage(context)
     return last and last:find("?") ~= nil
 end
 
@@ -85,17 +83,7 @@ end
 -- INTELLIGENT RESPONSE GENERATOR
 -- ============================================================================
 
-local ResponseGenerator = {}
-
-function ResponseGenerator:new(role, personality)
-    return {
-        role = role,
-        personality = personality,
-        templates = self:loadTemplates(role)
-    }
-end
-
-function ResponseGenerator:loadTemplates(role)
+local function loadTemplates(role)
     if role == "student" then
         return {
             greetings = {"Hey! How's it going?", "Hi! What's up?", "Hello! What's new?"},
@@ -141,40 +129,40 @@ function ResponseGenerator:loadTemplates(role)
     end
 end
 
-function ResponseGenerator:generate(context)
-    local last_msg = context:getLastMessage()
-    local is_question = context:wasQuestionAsked()
+local function chooseRandom(list)
+    return list[math.random(#list)]
+end
+
+local function generateResponse(role, context, personality, templates)
+    local last_msg = getLastMessage(context)
+    local is_question = wasQuestionAsked(context)
     
-    if self.role == "student" then
+    if role == "student" then
         if not last_msg then
-            return self:choose(self.templates.greetings)
+            return chooseRandom(templates.greetings)
         elseif is_question then
             -- Answer, then sometimes ask follow-up
-            local response = self:choose(self.templates.acknowledgments)
-            if math.random() < self.personality.curiosity then
-                response = response .. " " .. self:choose(self.templates.questions)
+            local response = chooseRandom(templates.acknowledgments)
+            if math.random() < personality.curiosity then
+                response = response .. " " .. chooseRandom(templates.questions)
             end
             return response
         elseif context.depth > 5 and math.random() < 0.4 then
-            return self:choose(self.templates.reactions)
+            return chooseRandom(templates.reactions)
         else
-            return self:choose(self.templates.questions)
+            return chooseRandom(templates.questions)
         end
     else -- teacher
         if is_question then
-            local response = self:choose(self.templates.explanations)
+            local response = chooseRandom(templates.explanations)
             if math.random() < 0.3 then
-                response = response .. " " .. self:choose(self.templates.follow_ups)
+                response = response .. " " .. chooseRandom(templates.follow_ups)
             end
             return response
         else
-            return self:choose(self.templates.encouragements)
+            return chooseRandom(templates.encouragements)
         end
     end
-end
-
-function ResponseGenerator:choose(list)
-    return list[math.random(#list)]
 end
 
 -- ============================================================================
@@ -203,24 +191,25 @@ function M.createAdvancedTrainingSession(options)
     local student_personality = createPersonality("student")
     local teacher_personality = createPersonality("teacher")
     
-    local student_gen = ResponseGenerator:new("student", student_personality)
-    local teacher_gen = ResponseGenerator:new("teacher", teacher_personality)
+    -- Load templates
+    local student_templates = loadTemplates("student")
+    local teacher_templates = loadTemplates("teacher")
     
     local start_time = os.clock()
     local total_exchanges = 0
     
     for conv = 1, num_conversations do
         -- Create fresh context for each conversation
-        local context = ConversationContext:new()
+        local context = createContext()
         
         -- Student starts
-        local student_msg = student_gen:generate(context)
-        context:addExchange("Student", student_msg)
+        local student_msg = generateResponse("student", context, student_personality, student_templates)
+        addExchange(context, "Student", student_msg)
         
         for turn = 1, turns_per_conversation - 1 do
             -- Teacher responds
-            local teacher_msg = teacher_gen:generate(context)
-            context:addExchange("Teacher", teacher_msg)
+            local teacher_msg = generateResponse("teacher", context, teacher_personality, teacher_templates)
+            addExchange(context, "Teacher", teacher_msg)
             
             -- Write to file immediately
             log_file.writeLine(textutils.serialize({
@@ -236,8 +225,8 @@ function M.createAdvancedTrainingSession(options)
             }))
             
             -- Student responds
-            student_msg = student_gen:generate(context)
-            context:addExchange("Student", student_msg)
+            student_msg = generateResponse("student", context, student_personality, student_templates)
+            addExchange(context, "Student", student_msg)
             
             total_exchanges = total_exchanges + 1
         end
