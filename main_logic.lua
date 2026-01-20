@@ -2,35 +2,71 @@
 -- Natural conversational AI with personality and useful features
 
 -- ============================================================================
--- DRIVE CONFIGURATION (5-Drive Architecture)
+-- DRIVE CONFIGURATION (Load from drive_config.lua)
 -- ============================================================================
+
+-- Load drive configuration (peripheral names)
+local drive_config = require("drive_config")
+
+-- Convert peripheral names to mount paths
+local function getMountPath(peripheral_name)
+    if not peripheral_name or peripheral_name == "" then return nil end
+    if not peripheral.isPresent(peripheral_name) then return nil end
+    return disk.getMountPath(peripheral_name)
+end
+
+-- Build DRIVES table with mount paths
 DRIVES = {
-    TOP = "disk",                                    -- TOP: Modules (core files)
-    RAM_A = {"drive_41", "drive_42", "drive_40"},    -- BOTTOM: Virtual memory part 1
-    RAM_B = {"drive_45", "drive_43", "drive_44"},    -- BACK: Virtual memory part 2
-    RAID_A = {"drive_32", "drive_31"},               -- RIGHT: Persistent memory storage
-    RAID_B = {"drive_30", "drive_29"}                -- LEFT: Persistent memory storage
+    TOP = getMountPath(drive_config.top),
+    RAM_A = {},   -- BOTTOM: Virtual memory part 1
+    RAM_B = {},   -- BACK: Virtual memory part 2
+    RAID_A = {},  -- RIGHT: Persistent memory storage
+    RAID_B = {}   -- LEFT: Persistent memory storage
 }
+
+-- Convert arrays of peripheral names to mount paths
+for _, name in ipairs(drive_config.bottom or {}) do
+    local path = getMountPath(name)
+    if path then table.insert(DRIVES.RAM_A, path) end
+end
+for _, name in ipairs(drive_config.back or {}) do
+    local path = getMountPath(name)
+    if path then table.insert(DRIVES.RAM_B, path) end
+end
+for _, name in ipairs(drive_config.right or {}) do
+    local path = getMountPath(name)
+    if path then table.insert(DRIVES.RAID_A, path) end
+end
+for _, name in ipairs(drive_config.left or {}) do
+    local path = getMountPath(name)
+    if path then table.insert(DRIVES.RAID_B, path) end
+end
 
 -- ============================================================================
 -- ADD DISK PATHS TO LUA'S SEARCH PATH
 -- ============================================================================
 
 -- Add TOP drive (modules) to Lua's search path
-if package and package.path then
+if package and package.path and DRIVES.TOP then
     -- Add the TOP drive where all modules live
     package.path = package.path .. ";" .. DRIVES.TOP .. "/?.lua"
     
     -- Also add all other drives to search path for flexibility
-    for _, drives in pairs({DRIVES.RAM_A, DRIVES.RAM_B, DRIVES.RAID_A, DRIVES.RAID_B}) do
-        for _, drive in ipairs(drives) do
-            package.path = package.path .. ";" .. drive .. "/?.lua"
+    for _, drives_list in pairs({DRIVES.RAM_A, DRIVES.RAM_B, DRIVES.RAID_A, DRIVES.RAID_B}) do
+        for _, drive_path in ipairs(drives_list) do
+            package.path = package.path .. ";" .. drive_path .. "/?.lua"
         end
     end
     
     print("Modules loaded from: " .. DRIVES.TOP)
-    print("RAM drives: " .. table.concat(DRIVES.RAM_A, ", ") .. " | " .. table.concat(DRIVES.RAM_B, ", "))
-    print("RAID drives: " .. table.concat(DRIVES.RAID_A, ", ") .. " | " .. table.concat(DRIVES.RAID_B, ", "))
+    if #DRIVES.RAM_A > 0 or #DRIVES.RAM_B > 0 then
+        print("RAM drives: " .. table.concat(DRIVES.RAM_A, ", ") .. " | " .. table.concat(DRIVES.RAM_B, ", "))
+    end
+    if #DRIVES.RAID_A > 0 or #DRIVES.RAID_B > 0 then
+        print("RAID drives: " .. table.concat(DRIVES.RAID_A, ", ") .. " | " .. table.concat(DRIVES.RAID_B, ", "))
+    end
+else
+    print("WARNING: TOP drive not found, using computer root for modules")
 end
 
 local M = {}
