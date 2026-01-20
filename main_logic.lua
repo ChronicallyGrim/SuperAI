@@ -2,32 +2,35 @@
 -- Natural conversational AI with personality and useful features
 
 -- ============================================================================
--- ADD DISK PATHS TO LUA'S SEARCH PATH (DYNAMIC DETECTION)
+-- DRIVE CONFIGURATION (5-Drive Architecture)
+-- ============================================================================
+DRIVES = {
+    TOP = "disk",                                    -- TOP: Modules (core files)
+    RAM_A = {"drive_41", "drive_42", "drive_40"},    -- BOTTOM: Virtual memory part 1
+    RAM_B = {"drive_45", "drive_43", "drive_44"},    -- BACK: Virtual memory part 2
+    RAID_A = {"drive_32", "drive_31"},               -- RIGHT: Persistent memory storage
+    RAID_B = {"drive_30", "drive_29"}                -- LEFT: Persistent memory storage
+}
+
+-- ============================================================================
+-- ADD DISK PATHS TO LUA'S SEARCH PATH
 -- ============================================================================
 
--- Dynamically detect all disk drives and add to Lua's module search path
+-- Add TOP drive (modules) to Lua's search path
 if package and package.path then
-    -- Use peripheral.find to get all drives (works with wired modems!)
-    local all_drives = {peripheral.find("drive")}
-    local top_drive = nil
+    -- Add the TOP drive where all modules live
+    package.path = package.path .. ";" .. DRIVES.TOP .. "/?.lua"
     
-    for _, drive_wrap in ipairs(all_drives) do
-        local name = peripheral.getName(drive_wrap)
-        
-        -- Look for TOP drive (where code is installed)
-        if name:match("^top_") then
-            top_drive = name
+    -- Also add all other drives to search path for flexibility
+    for _, drives in pairs({DRIVES.RAM_A, DRIVES.RAM_B, DRIVES.RAID_A, DRIVES.RAID_B}) do
+        for _, drive in ipairs(drives) do
+            package.path = package.path .. ";" .. drive .. "/?.lua"
         end
-        
-        -- Add all drives to search path
-        package.path = package.path .. ";" .. name .. "/?.lua"
     end
     
-    if top_drive then
-        print("Loaded modules from: " .. top_drive)
-    else
-        print("Using root filesystem for modules (no TOP drive)")
-    end
+    print("Modules loaded from: " .. DRIVES.TOP)
+    print("RAM drives: " .. table.concat(DRIVES.RAM_A, ", ") .. " | " .. table.concat(DRIVES.RAM_B, ", "))
+    print("RAID drives: " .. table.concat(DRIVES.RAID_A, ", ") .. " | " .. table.concat(DRIVES.RAID_B, ", "))
 end
 
 local M = {}
