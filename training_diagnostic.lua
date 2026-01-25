@@ -17,104 +17,110 @@ local success, err = pcall(function()
 end)
 
 if not cm_loaded then
-    print("ERROR: context_markov.dat not found!")
-    print("Run training first.")
-    return
+    print("WARNING: context_markov.dat not found!")
+    print("Run training first to generate data.")
+    print("")
 end
 
--- Get stats
-local stats = cm.getStats()
+-- Load exponential trainer stats
+local exp_state = nil
+pcall(function()
+    local exp = require("exponential_trainer")
+    exp_state = exp.getState()
+end)
 
-print("=== LEARNED DATA STATS ===")
+print("=== EXPONENTIAL TRAINING STATUS ===")
 print("")
-print("Patterns learned: " .. (stats.total_patterns or 0))
-print("Contexts learned: " .. (stats.contexts_learned or 0))
-print("Successful generations: " .. (stats.successful_generations or 0))
-print("")
-
--- Show what contexts exist
-print("=== CONTEXTS LEARNED ===")
-print("")
-local context_count = 0
-if cm.chains and cm.chains.contexts then
-    for context, data in pairs(cm.chains.contexts) do
-        context_count = context_count + 1
-        if context_count <= 10 then
-            local pattern_count = 0
-            if type(data) == "table" then
-                for _ in pairs(data) do pattern_count = pattern_count + 1 end
-            end
-            print("  " .. context .. " (" .. pattern_count .. " patterns)")
+if exp_state then
+    print("Generation: " .. (exp_state.generation or 1))
+    print("Total conversations trained: " .. (exp_state.total_conversations or 0))
+    print("Student intelligence: " .. string.format("%.2f", exp_state.student_intelligence or 1.0))
+    print("Teacher intelligence: " .. string.format("%.2f", exp_state.teacher_intelligence or 1.0))
+    
+    -- Complexity level
+    local gen = exp_state.generation or 1
+    local complexity = gen <= 2 and "Simple" or gen <= 5 and "Intermediate" or gen <= 10 and "Advanced" or "Expert"
+    print("Complexity level: " .. complexity)
+    print("")
+    
+    -- Topic mastery
+    if exp_state.topic_mastery then
+        local topics_covered = 0
+        for _ in pairs(exp_state.topic_mastery) do
+            topics_covered = topics_covered + 1
         end
+        print("Topics mastered: " .. topics_covered)
     end
+else
+    print("No exponential training data found.")
+    print("Say 'training menu' and choose option 7-11")
 end
-if context_count > 10 then
-    print("  ... and " .. (context_count - 10) .. " more contexts")
-end
-print("")
-print("Total unique contexts: " .. context_count)
 print("")
 
--- Show sample patterns from each context
-print("=== SAMPLE PATTERNS ===")
-print("")
-if cm.chains and cm.chains.responses then
-    local shown = 0
-    for context, responses in pairs(cm.chains.responses) do
-        if shown < 5 then
-            print("[" .. context .. "]")
-            local resp_count = 0
-            for resp, _ in pairs(responses) do
-                resp_count = resp_count + 1
-                if resp_count <= 3 then
-                    -- Truncate long responses
-                    local display = resp
-                    if #display > 50 then
-                        display = display:sub(1, 47) .. "..."
-                    end
-                    print("  -> " .. display)
+-- Get stats from context_markov
+if cm_loaded then
+    local stats = cm.getStats()
+    
+    print("=== LEARNED DATA STATS ===")
+    print("")
+    print("Patterns learned: " .. (stats.total_patterns or 0))
+    print("Contexts learned: " .. (stats.contexts_learned or 0))
+    print("Successful generations: " .. (stats.successful_generations or 0))
+    print("")
+    
+    -- Show what contexts exist
+    print("=== CONTEXTS LEARNED ===")
+    print("")
+    local context_count = 0
+    if cm.chains and cm.chains.contexts then
+        for context, data in pairs(cm.chains.contexts) do
+            context_count = context_count + 1
+            if context_count <= 10 then
+                local pattern_count = 0
+                if type(data) == "table" and data.sequences then
+                    for _ in pairs(data.sequences) do pattern_count = pattern_count + 1 end
                 end
+                print("  " .. context .. " (" .. pattern_count .. " sequences)")
             end
+        end
+    end
+    if context_count > 10 then
+        print("  ... and " .. (context_count - 10) .. " more contexts")
+    end
+    print("")
+    print("Total unique contexts: " .. context_count)
+    print("")
+    
+    -- Test generation
+    print("=== TEST GENERATION ===")
+    print("")
+    print("Testing if MODUS can generate from learned data...")
+    print("")
+    
+    local test_contexts = {
+        "conversation_start",
+        "answering_question",
+        "general"
+    }
+    
+    for _, ctx in ipairs(test_contexts) do
+        local response = cm.generateWithContext({}, "test", 15)
+        if response then
+            print("[" .. ctx .. "]")
+            local display = response
+            if #display > 50 then display = display:sub(1, 47) .. "..." end
+            print("  Generated: " .. display)
+            print("  Source: LEARNED DATA")
             print("")
-            shown = shown + 1
         end
     end
 end
 
--- Test generation
-print("=== TEST GENERATION ===")
+print("=== HOW TO GROW SMARTER ===")
 print("")
-print("Testing if MODUS can generate from learned data...")
+print("1. Say 'training menu' to MODUS")
+print("2. Choose options 7-11 for exponential training")
+print("3. Run multiple times - each run builds on previous!")
+print("4. Higher generations = smarter responses")
 print("")
-
-local test_contexts = {
-    "conversation_start",
-    "answering_question",
-    "status_question",
-    "greeting"
-}
-
-for _, ctx in ipairs(test_contexts) do
-    local response = cm.generateResponse({ctx}, {})
-    if response then
-        print("[" .. ctx .. "]")
-        print("  Generated: " .. response)
-        print("  Source: LEARNED DATA")
-        print("")
-    else
-        print("[" .. ctx .. "]")
-        print("  Generated: (none)")
-        print("  Source: Would use FALLBACK")
-        print("")
-    end
-end
-
--- Compare with/without training
-print("=== PROOF OF LEARNING ===")
-print("")
-print("If 'Source: LEARNED DATA' appears above,")
-print("MODUS is actively using the training!")
-print("")
-print("To see this in action during chat,")
-print("type 'debug on' to MODUS to enable")
-print("response source logging.")
+print("Say 'debug on' during chat to see response sources.")
