@@ -428,7 +428,16 @@ function M.save(filepath)
         stats = M.stats
     }
     
+    -- Ensure parent directory exists
+    local dir = filepath:match("(.*/)")
+    if dir and not fs.exists(dir) then
+        fs.makeDir(dir)
+    end
+    
     local file = fs.open(filepath, "w")
+    if not file then
+        return false, "Could not open file for writing: " .. filepath
+    end
     file.write(textutils.serialize(data))
     file.close()
     
@@ -443,6 +452,9 @@ function M.load(filepath)
     end
     
     local file = fs.open(filepath, "r")
+    if not file then
+        return false
+    end
     local data = textutils.unserialize(file.readAll())
     file.close()
     
