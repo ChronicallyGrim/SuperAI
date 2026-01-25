@@ -322,6 +322,16 @@ end
 
 local function evolvePersonality(handle, success, engagement)
     local p = readPersonality(handle.id, handle.drive)
+    
+    -- If personality couldn't be read, create default
+    if not p then
+        p = {
+            role = handle.id,
+            traits = {curiosity = 0.5, helpfulness = 0.5, patience = 0.5, creativity = 0.5, formality = 0.5},
+            metrics = {conversations = 0, successful_exchanges = 0, confidence = 0.5, learning_rate = 1.0}
+        }
+    end
+    
     if success then
         p.metrics.confidence = math.min(1.0, (p.metrics.confidence or 0.5) + 0.002)
         p.metrics.successful_exchanges = (p.metrics.successful_exchanges or 0) + 1
@@ -346,6 +356,19 @@ end
 
 local function addExchange(conv_id, speaker, message)
     local ctx = readContext(conv_id)
+    
+    -- If context couldn't be read, create a fresh one
+    if not ctx then
+        ctx = {
+            id = conv_id,
+            current_topic = "general",
+            emotional_state = "neutral",
+            depth = 0,
+            question_streak = 0,
+            recent_exchanges = {}
+        }
+    end
+    
     table.insert(ctx.recent_exchanges, {speaker=speaker, message=message})
     if #ctx.recent_exchanges > 5 then
         table.remove(ctx.recent_exchanges, 1)
@@ -394,6 +417,12 @@ local function choose(list)
 end
 
 local function generateResponse(role, ctx, traits)
+    -- Ensure ctx has required fields
+    ctx = ctx or {}
+    ctx.recent_exchanges = ctx.recent_exchanges or {}
+    ctx.depth = ctx.depth or 0
+    traits = traits or {curiosity = 0.5}
+    
     local last_msg = #ctx.recent_exchanges > 0 and ctx.recent_exchanges[#ctx.recent_exchanges].message or nil
     local is_q = last_msg and last_msg:find("?") ~= nil
     
@@ -455,20 +484,28 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
         local s_p = readPersonality("student", student.drive)
         local t_p = readPersonality("teacher", teacher.drive)
         
-        local s_msg = generateResponse("student", readContext(ctx_id), s_p.traits)
+        -- Default traits if personality read failed
+        local s_traits = s_p and s_p.traits or {curiosity=0.7, helpfulness=0.6, patience=0.6, creativity=0.8, formality=0.3}
+        local t_traits = t_p and t_p.traits or {curiosity=0.5, helpfulness=0.9, patience=0.8, creativity=0.6, formality=0.6}
+        
+        local init_ctx = readContext(ctx_id) or {
+            id = ctx_id, current_topic = "general", emotional_state = "neutral",
+            depth = 0, question_streak = 0, recent_exchanges = {}
+        }
+        local s_msg = generateResponse("student", init_ctx, s_traits)
         local ctx = addExchange(ctx_id, "Student", s_msg)
         
         for turn = 1, turns - 1 do
-            local t_msg = generateResponse("teacher", ctx, t_p.traits)
+            local t_msg = generateResponse("teacher", ctx, t_traits)
             ctx = addExchange(ctx_id, "Teacher", t_msg)
             
             -- Build CSV line in buffer (pipe-delimited)
             local line = "Student|" .. s_msg .. "|Teacher|" .. t_msg .. "|" ..
-                        ctx.current_topic .. "|" .. ctx.emotional_state .. "|" ..
-                        tostring(turn) .. "|" .. tostring(ctx.depth) .. "\n"
+                        (ctx.current_topic or "general") .. "|" .. (ctx.emotional_state or "neutral") .. "|" ..
+                        tostring(turn) .. "|" .. tostring(ctx.depth or 0) .. "\n"
             table.insert(log_buffer, line)
             
-            s_msg = generateResponse("student", ctx, s_p.traits)
+            s_msg = generateResponse("student", ctx, s_traits)
             ctx = addExchange(ctx_id, "Student", s_msg)
             total = total + 1
         end
@@ -521,9 +558,12 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
     local final_s = readPersonality("student", student.drive)
     local final_t = readPersonality("teacher", teacher.drive)
     
+    local s_conf = final_s and final_s.metrics and final_s.metrics.confidence or 0.5
+    local t_conf = final_t and final_t.metrics and final_t.metrics.confidence or 0.5
+    
     print(string.format("Batch complete: %d conversations, %.1f sec", end_conv - start_conv + 1, os.clock() - start_time))
     
-    return total, final_s.metrics.confidence, final_t.metrics.confidence
+    return total, s_conf, t_conf
 end
 
 function M.createAdvancedTrainingSession(options)
