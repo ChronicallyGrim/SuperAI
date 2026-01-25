@@ -2334,8 +2334,8 @@ function M.runAdvancedAITraining(num_conversations)
     print("=== IMPORTING TO CONTEXT MARKOV ===")
     print("")
     
-    -- Import to context-aware Markov
-    local imported = context_markov.importFromTrainingLog("/training/conversation_log.dat")
+    -- Import to context-aware Markov (trainer saves as .csv)
+    local imported = context_markov.importFromTrainingLog("/training/conversation_log.csv")
     context_markov.save("context_markov.dat")
     
     -- Reload context markov with new data
