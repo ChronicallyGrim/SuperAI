@@ -18,6 +18,7 @@ end
 -- ============================================================================
 local config = nil
 local config_found = false
+local top_mount = nil  -- Will hold the mount path for TOP drive
 
 -- Try to load from computer root first (installer puts it there)
 if fs.exists("drive_config.lua") then
@@ -43,7 +44,7 @@ if not config_found or not config or not config.top then
     print("")
 else
     -- Get the MOUNT PATH for the TOP drive (not peripheral name!)
-    local top_mount = getMountPath(config.top)
+    top_mount = getMountPath(config.top)
     
     if not top_mount then
         print("WARNING: TOP drive '" .. config.top .. "' not found!")
@@ -59,8 +60,24 @@ end
 -- ============================================================================
 -- CHECK FOR MAIN_LOGIC
 -- ============================================================================
-if not fs.exists("main_logic.lua") and not fs.exists("main_logic") then
-    print("ERROR: main_logic not found on computer root!")
+
+-- main_logic.lua should be on the TOP drive, not computer root
+local main_logic_path = nil
+
+-- First check TOP drive
+if top_mount and fs.exists(top_mount .. "/main_logic.lua") then
+    main_logic_path = top_mount .. "/main_logic.lua"
+    print("Loading main_logic from: " .. main_logic_path)
+-- Fallback: check computer root
+elseif fs.exists("main_logic.lua") then
+    main_logic_path = "main_logic.lua"
+    print("Loading main_logic from computer root")
+else
+    print("ERROR: main_logic.lua not found!")
+    if top_mount then
+        print("Checked: " .. top_mount .. "/main_logic.lua")
+    end
+    print("Checked: computer root")
     print("Run NewInstaller2 to install SuperAI.")
     return
 end
