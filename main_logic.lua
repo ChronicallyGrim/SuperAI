@@ -1497,22 +1497,27 @@ The mega train option generates 10,000 conversations automatically!]]
     
     -- NEW: Training menu
     if message:lower():find("training menu") then
-        print("\n=== Training Menu ===")
+        print("\n=== SUPERAI TRAINING MENU ===")
         print("")
-        print("BASIC TRAINING (Template-based):")
+        print("BASIC TRAINING (Quick, template-based):")
         print("1. Quick Train (100 conversations) - 30 seconds")
         print("2. Medium Train (500 conversations) - 2 minutes")
         print("3. Mega Train (2000 conversations) - 5 minutes")
         print("")
         print("ADVANCED TRAINING (Self-Learning AI System):")
-        print("4. AI Trainer - Quick (500 AI convos) - 2 minutes ⭐")
-        print("5. AI Trainer - Standard (2,000 AI convos) - 5 minutes ⭐⭐")
+        print("4. AI Trainer - Quick (500 AI convos) - 2 minutes")
+        print("5. AI Trainer - Standard (2,000 AI convos) - 5 minutes")
         print("6. AI Trainer - Deep (10,000 AI convos) - 20 minutes")
-        print("7. AI Trainer - ULTIMATE (50,000 AI convos) - 2 HOURS")
         print("")
-        print("OTHER OPTIONS:")
-        print("8. Train from examples (manual)")
-        print("9. Back to chat")
+        print("*** EXPONENTIAL TRAINING (Grows smarter each run!) ***")
+        print("7. Exponential - Quick (1,000 convos)")
+        print("8. Exponential - Standard (10,000 convos)")
+        print("9. Exponential - Deep (50,000 convos)")
+        print("10. Exponential - MASSIVE (100,000 convos)")
+        print("11. Exponential - Custom amount")
+        print("12. View training stats")
+        print("")
+        print("0. Back to chat")
         print("")
         write("Choice: ")
         
@@ -1527,13 +1532,10 @@ The mega train option generates 10,000 conversations automatically!]]
             print("Starting mega training... this will take a few minutes!")
             return M.runAutoTraining(2000)
         elseif choice == "4" then
-            -- Quick AI training
             return M.runAdvancedAITraining(500)
         elseif choice == "5" then
-            -- Standard AI training (RECOMMENDED)
             return M.runAdvancedAITraining(2000)
         elseif choice == "6" then
-            -- Deep AI training
             print("Deep AI training will take about 20 minutes...")
             write("Continue? (y/n): ")
             if read():lower() == "y" then
@@ -1542,26 +1544,56 @@ The mega train option generates 10,000 conversations automatically!]]
                 return "Cancelled. Say 'training menu' to choose another option."
             end
         elseif choice == "7" then
-            -- ULTIMATE AI training
-            print("=== WARNING: ULTIMATE AI TRAINING ===")
-            print("This will take 1-2 HOURS to complete!")
-            print("Two self-learning AIs will have 50,000 conversations.")
-            print("Your SuperAI will become incredibly intelligent!")
-            print("")
-            write("Type YES to confirm: ")
-            local confirm = read()
-            if confirm:upper() == "YES" then
-                print("")
-                print("Starting ULTIMATE AI training...")
-                print("Leave your computer running. Progress will be displayed.")
-                print("")
-                return M.runAdvancedAITraining(50000)
-            else
-                return "ULTIMATE training cancelled. Say 'training menu' to choose another option."
-            end
+            -- Exponential Quick
+            local expTrainer = require("exponential_trainer")
+            expTrainer.train(1000, 4)
+            return "Exponential training complete! Run again to grow even smarter!"
         elseif choice == "8" then
-            return "Great! Tell me examples like: User says: hello / I should reply: Hi there!"
+            -- Exponential Standard
+            local expTrainer = require("exponential_trainer")
+            expTrainer.train(10000, 5)
+            return "Exponential training complete! Generation increased!"
         elseif choice == "9" then
+            -- Exponential Deep
+            print("=== EXPONENTIAL DEEP TRAINING ===")
+            print("50,000 conversations with curriculum learning!")
+            print("Each run makes me smarter than before!")
+            write("Continue? (y/n): ")
+            if read():lower() == "y" then
+                local expTrainer = require("exponential_trainer")
+                expTrainer.train(50000, 6)
+                return "Deep exponential training complete! My intelligence has grown significantly!"
+            else
+                return "Cancelled. Say 'training menu' to try again."
+            end
+        elseif choice == "10" then
+            -- Exponential Massive
+            print("=== EXPONENTIAL MASSIVE TRAINING ===")
+            print("100,000 conversations - maximum growth!")
+            print("This will take 2-3 hours but will make me MUCH smarter!")
+            write("Type YES to confirm: ")
+            if read():upper() == "YES" then
+                local expTrainer = require("exponential_trainer")
+                expTrainer.train(100000, 7)
+                return "MASSIVE exponential training complete! My intelligence has grown exponentially!"
+            else
+                return "Cancelled."
+            end
+        elseif choice == "11" then
+            -- Custom
+            write("Number of conversations: ")
+            local num = tonumber(read()) or 5000
+            write("Turns per conversation (3-10): ")
+            local turns = tonumber(read()) or 5
+            local expTrainer = require("exponential_trainer")
+            expTrainer.train(num, turns)
+            return "Custom exponential training complete!"
+        elseif choice == "12" then
+            -- Stats
+            local expTrainer = require("exponential_trainer")
+            expTrainer.showStats()
+            return "Training stats shown above. Say 'training menu' for more options."
+        elseif choice == "0" then
             return "Back to chatting! What would you like to talk about?"
         else
             return "Invalid choice. Say 'training menu' to try again."
@@ -2029,12 +2061,20 @@ Give me a few examples and I'll learn from them!]]
                 if h.response then table.insert(history_msgs, h.response) end
             end
             local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+            -- Only use if response seems appropriate for greeting
             if smart_response and #smart_response > 10 then
-                response = smart_response
-                lastResponseSource = "CONTEXT_MARKOV (trained greeting)"
-                used_markov = true
-                if DEBUG_MODE then
-                    print("[DEBUG] Used TRAINED response for greeting")
+                local lower = smart_response:lower()
+                -- Check if it's a greeting-like response
+                if lower:find("hi") or lower:find("hey") or lower:find("hello") or 
+                   lower:find("how") or lower:find("what's up") or lower:find("good") then
+                    response = smart_response
+                    lastResponseSource = "CONTEXT_MARKOV (trained greeting)"
+                    used_markov = true
+                    if DEBUG_MODE then
+                        print("[DEBUG] Used TRAINED response for greeting")
+                    end
+                elseif DEBUG_MODE then
+                    print("[DEBUG] Markov response didn't fit greeting: " .. smart_response:sub(1,30))
                 end
             end
         end
@@ -2059,12 +2099,19 @@ Give me a few examples and I'll learn from them!]]
                 if h.response then table.insert(history_msgs, h.response) end
             end
             local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+            -- Only use if it looks like an answer (not the repetitive training phrases)
             if smart_response and #smart_response > 10 then
-                response = smart_response
-                lastResponseSource = "CONTEXT_MARKOV (trained question)"
-                used_markov = true
-                if DEBUG_MODE then
-                    print("[DEBUG] Used TRAINED response for question")
+                local dominated_by_training = smart_response:find("The key is how parts") or
+                                              smart_response:find("Think of it like organizing")
+                if not dominated_by_training then
+                    response = smart_response
+                    lastResponseSource = "CONTEXT_MARKOV (trained question)"
+                    used_markov = true
+                    if DEBUG_MODE then
+                        print("[DEBUG] Used TRAINED response for question")
+                    end
+                elseif DEBUG_MODE then
+                    print("[DEBUG] Skipped repetitive training phrase")
                 end
             end
         end
@@ -2075,21 +2122,25 @@ Give me a few examples and I'll learn from them!]]
         safeCall(personality, "resetQuestionCount", nil)
         
     else
-        -- TRY CONTEXT MARKOV FIRST (use trained data!)
+        -- For statements, prefer builtin but mix in trained occasionally
         local used_markov = false
-        if contextMarkov then
+        if contextMarkov and math.random() < 0.3 then  -- 30% chance to try trained
             local history_msgs = {}
             local history = getContextualHistory(user, 5)
             for _, h in ipairs(history) do
                 if h.response then table.insert(history_msgs, h.response) end
             end
             local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
-            if smart_response and #smart_response > 10 then
-                response = smart_response
-                lastResponseSource = "CONTEXT_MARKOV (trained statement)"
-                used_markov = true
-                if DEBUG_MODE then
-                    print("[DEBUG] Used TRAINED response for statement")
+            if smart_response and #smart_response > 15 then
+                local dominated_by_training = smart_response:find("The key is how parts") or
+                                              smart_response:find("Think of it like organizing")
+                if not dominated_by_training then
+                    response = smart_response
+                    lastResponseSource = "CONTEXT_MARKOV (trained statement)"
+                    used_markov = true
+                    if DEBUG_MODE then
+                        print("[DEBUG] Used TRAINED response for statement")
+                    end
                 end
             end
         end
