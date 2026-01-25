@@ -2020,8 +2020,28 @@ Give me a few examples and I'll learn from them!]]
         end
         
     elseif intent == "greeting" then
-        response = handleGreeting(user, message)
-        lastResponseSource = "BUILTIN (greeting handler)"
+        -- TRY CONTEXT MARKOV FIRST (use trained data!)
+        local used_markov = false
+        if contextMarkov then
+            local history_msgs = {}
+            local history = getContextualHistory(user, 5)
+            for _, h in ipairs(history) do
+                if h.response then table.insert(history_msgs, h.response) end
+            end
+            local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+            if smart_response and #smart_response > 10 then
+                response = smart_response
+                lastResponseSource = "CONTEXT_MARKOV (trained greeting)"
+                used_markov = true
+                if DEBUG_MODE then
+                    print("[DEBUG] Used TRAINED response for greeting")
+                end
+            end
+        end
+        if not used_markov then
+            response = handleGreeting(user, message)
+            lastResponseSource = "BUILTIN (greeting handler)"
+        end
         
     elseif intent == "gratitude" then
         response = handleGratitude(user, message)
@@ -2030,13 +2050,53 @@ Give me a few examples and I'll learn from them!]]
         safeCall(personality, "recordJokeReaction", nil, true)
         
     elseif intent == "question" then
-        response = handleQuestion(user, message, userMood)
-        lastResponseSource = "BUILTIN (question handler)"
+        -- TRY CONTEXT MARKOV FIRST (use trained data!)
+        local used_markov = false
+        if contextMarkov then
+            local history_msgs = {}
+            local history = getContextualHistory(user, 5)
+            for _, h in ipairs(history) do
+                if h.response then table.insert(history_msgs, h.response) end
+            end
+            local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+            if smart_response and #smart_response > 10 then
+                response = smart_response
+                lastResponseSource = "CONTEXT_MARKOV (trained question)"
+                used_markov = true
+                if DEBUG_MODE then
+                    print("[DEBUG] Used TRAINED response for question")
+                end
+            end
+        end
+        if not used_markov then
+            response = handleQuestion(user, message, userMood)
+            lastResponseSource = "BUILTIN (question handler)"
+        end
         safeCall(personality, "resetQuestionCount", nil)
         
     else
-        response = handleStatement(user, message, userMood)
-        lastResponseSource = "BUILTIN (statement handler)"
+        -- TRY CONTEXT MARKOV FIRST (use trained data!)
+        local used_markov = false
+        if contextMarkov then
+            local history_msgs = {}
+            local history = getContextualHistory(user, 5)
+            for _, h in ipairs(history) do
+                if h.response then table.insert(history_msgs, h.response) end
+            end
+            local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
+            if smart_response and #smart_response > 10 then
+                response = smart_response
+                lastResponseSource = "CONTEXT_MARKOV (trained statement)"
+                used_markov = true
+                if DEBUG_MODE then
+                    print("[DEBUG] Used TRAINED response for statement")
+                end
+            end
+        end
+        if not used_markov then
+            response = handleStatement(user, message, userMood)
+            lastResponseSource = "BUILTIN (statement handler)"
+        end
     end
     
     -- Add wisdom occasionally for thoughtful conversations
@@ -2091,30 +2151,6 @@ Give me a few examples and I'll learn from them!]]
         
         -- Add this conversation to searchable memory
         memorySearch.addMemory(message, user, {response = response})
-    end
-    
-    -- NEW: Smart Context-Aware Markov (understands conversation flow!)
-    if contextMarkov and (not response or #response < 10) then
-        -- Get conversation history for context
-        local history_msgs = {}
-        local history = getContextualHistory(user, 5)
-        for _, h in ipairs(history) do
-            if h.response then
-                table.insert(history_msgs, h.response)
-            end
-        end
-        
-        -- Generate response with context awareness
-        local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
-        if smart_response and #smart_response > 10 then
-            response = smart_response
-            lastResponseSource = "CONTEXT_MARKOV (trained data)"
-            if DEBUG_MODE then
-                print("[DEBUG] Response from: CONTEXT_MARKOV")
-                local ctx = contextMarkov.detectContext(history_msgs, message)
-                print("[DEBUG] Context: " .. table.concat(ctx, ", "))
-            end
-        end
     end
     
     -- Still learn from conversations for future use (both systems)
