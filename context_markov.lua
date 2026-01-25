@@ -220,7 +220,12 @@ function M.generateWithContext(previous_messages, current_message, max_words)
         best_context = M.chains.contexts["general"]
     end
     
-    if not best_context or not next(best_context.starters) then
+    if not best_context then
+        return nil
+    end
+    
+    -- Check if we have any starters
+    if not best_context.starters or not next(best_context.starters) then
         return nil
     end
     
@@ -237,13 +242,49 @@ function M.generateWithContext(previous_messages, current_message, max_words)
     
     if #starters == 0 then return nil end
     
-    local current = starters[math.random(#starters)]
-    table.insert(response_words, current)
+    local first_word = starters[math.random(#starters)]
+    table.insert(response_words, first_word)
     
-    -- Generate next words
-    for i = 2, max_words do
-        if #response_words < 2 then break end
-        
+    -- Find a sequence key that starts with our first word to get second word
+    local found_second = false
+    for key, options in pairs(best_context.sequences or {}) do
+        local key_first = key:match("^(%S+)")
+        if key_first == first_word and options and #options > 0 then
+            -- Extract second word from key and add continuation
+            local key_second = key:match("^%S+%s+(%S+)")
+            if key_second then
+                table.insert(response_words, key_second)
+                local next_word = options[math.random(#options)]
+                table.insert(response_words, next_word)
+                found_second = true
+                break
+            end
+        end
+    end
+    
+    -- If couldn't find matching sequence, try any sequence
+    if not found_second and best_context.sequences then
+        for key, options in pairs(best_context.sequences) do
+            if options and #options > 0 then
+                -- Use this key's words as start
+                local w1, w2 = key:match("^(%S+)%s+(%S+)")
+                if w1 and w2 then
+                    response_words = {w1, w2}
+                    local next_word = options[math.random(#options)]
+                    table.insert(response_words, next_word)
+                    found_second = true
+                    break
+                end
+            end
+        end
+    end
+    
+    if not found_second then
+        return nil
+    end
+    
+    -- Continue generating with 2-word keys
+    for i = 4, max_words do
         local key = response_words[#response_words - 1] .. " " .. response_words[#response_words]
         local options = best_context.sequences[key]
         
@@ -259,7 +300,7 @@ function M.generateWithContext(previous_messages, current_message, max_words)
     end
     
     if #response_words >= 3 then
-        M.stats.successful_generations = M.stats.successful_generations + 1
+        M.stats.successful_generations = (M.stats.successful_generations or 0) + 1
         return table.concat(response_words, " ")
     end
     
