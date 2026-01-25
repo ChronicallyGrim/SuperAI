@@ -90,11 +90,39 @@ function M.detectContext(previous_messages, current_message)
     -- Greeting
     if msg_lower:find("^hi") or msg_lower:find("^hey") or msg_lower:find("^hello") or msg_lower:find("^yo") then
         table.insert(context_tags, "greeting")
+        table.insert(context_tags, "casual")
+    end
+    
+    -- Personal/casual questions (how are you, etc.)
+    if msg_lower:find("how are you") or msg_lower:find("how're you") or
+       msg_lower:find("how do you feel") or msg_lower:find("how's it going") or
+       msg_lower:find("what's up") or msg_lower:find("whats up") or
+       msg_lower:find("you doing") or msg_lower:find("you good") then
+        table.insert(context_tags, "how_are_you")
+        table.insert(context_tags, "personal")
+        table.insert(context_tags, "casual")
+    end
+    
+    -- Questions about the AI
+    if msg_lower:find("who are you") or msg_lower:find("what are you") or
+       msg_lower:find("your name") or msg_lower:find("about yourself") or
+       msg_lower:find("are you real") or msg_lower:find("are you a") then
+        table.insert(context_tags, "about_me")
+        table.insert(context_tags, "personal")
+    end
+    
+    -- Farewells
+    if msg_lower:find("^bye") or msg_lower:find("goodbye") or msg_lower:find("see you") or
+       msg_lower:find("gotta go") or msg_lower:find("talk later") or msg_lower:find("i'm leaving") then
+        table.insert(context_tags, "goodbyes")
+        table.insert(context_tags, "casual")
     end
     
     -- Gratitude
     if msg_lower:find("thank") or msg_lower:find("thx") or msg_lower:find("appreciate") then
         table.insert(context_tags, "gratitude")
+        table.insert(context_tags, "thanks")
+        table.insert(context_tags, "casual")
     end
     
     -- Emotional tone
