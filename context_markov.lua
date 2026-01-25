@@ -129,6 +129,10 @@ end
 -- CONTEXT-AWARE TRAINING
 -- ============================================================================
 
+-- Maximum sequences per key (prevents unbounded growth)
+local MAX_SEQUENCES_PER_KEY = 20
+local MAX_CONTEXTS = 100
+
 function M.trainWithContext(message, response, context_tags)
     if not message or not response or #message == 0 or #response == 0 then
         return
@@ -140,22 +144,44 @@ function M.trainWithContext(message, response, context_tags)
         context_key = "general"
     end
     
-    -- Initialize context if new
+    -- Limit total contexts
+    local context_count = 0
+    for _ in pairs(M.chains.contexts) do
+        context_count = context_count + 1
+    end
+    
+    -- Initialize context if new (but respect limit)
     if not M.chains.contexts[context_key] then
-        M.chains.contexts[context_key] = {
-            starters = {},
-            sequences = {},
-            count = 0
-        }
-        M.stats.contexts_learned = M.stats.contexts_learned + 1
+        if context_count >= MAX_CONTEXTS then
+            -- Use "general" instead of creating new context
+            context_key = "general"
+            if not M.chains.contexts[context_key] then
+                M.chains.contexts[context_key] = {
+                    starters = {},
+                    sequences = {},
+                    count = 0
+                }
+            end
+        else
+            M.chains.contexts[context_key] = {
+                starters = {},
+                sequences = {},
+                count = 0
+            }
+            M.stats.contexts_learned = M.stats.contexts_learned + 1
+        end
     end
     
     local context = M.chains.contexts[context_key]
     
-    -- Add response as starter
+    -- Add response as starter (use counts, not arrays)
     local first_word = response:match("^%S+")
     if first_word then
         context.starters[first_word] = (context.starters[first_word] or 0) + 1
+        -- Limit starters
+        if context.starters[first_word] > 50 then
+            context.starters[first_word] = 50
+        end
     end
     
     -- Build word chains (order-2 Markov)
@@ -172,8 +198,15 @@ function M.trainWithContext(message, response, context_tags)
             context.sequences[key] = {}
         end
         
-        table.insert(context.sequences[key], next_word)
-        M.stats.total_patterns = M.stats.total_patterns + 1
+        -- Limit sequence array size
+        if #context.sequences[key] < MAX_SEQUENCES_PER_KEY then
+            table.insert(context.sequences[key], next_word)
+            M.stats.total_patterns = M.stats.total_patterns + 1
+        else
+            -- Replace random entry to keep variety
+            local idx = math.random(MAX_SEQUENCES_PER_KEY)
+            context.sequences[key][idx] = next_word
+        end
     end
     
     context.count = context.count + 1
@@ -458,8 +491,20 @@ function M.importFromTrainingLog(filepath)
 end
 
 -- ============================================================================
--- SAVE/LOAD
+-- SAVE/LOAD (Uses RAID for large data!)
 -- ============================================================================
+
+local raid = nil
+local function initRAID()
+    if not raid then
+        local ok, r = pcall(require, "raid_system")
+        if ok then
+            pcall(function() r.init() end)
+            raid = r
+        end
+    end
+    return raid ~= nil
+end
 
 function M.save(filepath)
     filepath = filepath or "context_markov.dat"
@@ -469,7 +514,29 @@ function M.save(filepath)
         stats = M.stats
     }
     
-    -- Ensure parent directory exists
+    local serialized = textutils.serialize(data)
+    
+    -- Try RAID first for large data (>100KB)
+    if #serialized > 100000 and initRAID() then
+        local raid_path = "markov/" .. filepath:gsub("^/", "")
+        local ok, err = pcall(function()
+            raid.write(raid_path, serialized)
+        end)
+        if ok then
+            print("Saved to RAID: " .. #serialized .. " bytes")
+            -- Leave a marker file locally
+            local marker = fs.open(filepath .. ".raid", "w")
+            if marker then
+                marker.write("RAID:" .. raid_path)
+                marker.close()
+            end
+            return true
+        else
+            print("RAID save failed, trying local: " .. tostring(err))
+        end
+    end
+    
+    -- Fallback to local file
     local dir = filepath:match("(.*/)")
     if dir and not fs.exists(dir) then
         fs.makeDir(dir)
@@ -479,8 +546,33 @@ function M.save(filepath)
     if not file then
         return false, "Could not open file for writing: " .. filepath
     end
-    file.write(textutils.serialize(data))
+    
+    -- Try to write, catch out of space
+    local ok, err = pcall(function()
+        file.write(serialized)
+    end)
     file.close()
+    
+    if not ok then
+        -- Out of space - try RAID as backup
+        if initRAID() then
+            local raid_path = "markov/" .. filepath:gsub("^/", "")
+            local raid_ok = pcall(function()
+                raid.write(raid_path, serialized)
+            end)
+            if raid_ok then
+                -- Leave marker
+                local marker = fs.open(filepath .. ".raid", "w")
+                if marker then
+                    marker.write("RAID:" .. raid_path)
+                    marker.close()
+                end
+                print("Saved to RAID (local was full)")
+                return true
+            end
+        end
+        return false, "Out of space: " .. tostring(err)
+    end
     
     return true
 end
@@ -488,7 +580,50 @@ end
 function M.load(filepath)
     filepath = filepath or "context_markov.dat"
     
+    -- Check for RAID marker first
+    if fs.exists(filepath .. ".raid") then
+        local marker = fs.open(filepath .. ".raid", "r")
+        if marker then
+            local content = marker.readAll()
+            marker.close()
+            local raid_path = content:match("RAID:(.+)")
+            if raid_path and initRAID() then
+                local ok, data_str = pcall(function()
+                    return raid.read(raid_path)
+                end)
+                if ok and data_str then
+                    local data = textutils.unserialize(data_str)
+                    if data then
+                        M.chains = data.chains or M.chains
+                        M.stats = data.stats or M.stats
+                        print("Loaded from RAID: " .. #data_str .. " bytes")
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Try local file
     if not fs.exists(filepath) then
+        -- Also try RAID directly
+        if initRAID() then
+            local raid_path = "markov/" .. filepath:gsub("^/", "")
+            local ok, data_str = pcall(function()
+                if raid.exists(raid_path) then
+                    return raid.read(raid_path)
+                end
+                return nil
+            end)
+            if ok and data_str then
+                local data = textutils.unserialize(data_str)
+                if data then
+                    M.chains = data.chains or M.chains
+                    M.stats = data.stats or M.stats
+                    return true
+                end
+            end
+        end
         return false
     end
     
@@ -516,7 +651,7 @@ function M.getStats()
     
     return {
         total_patterns = M.stats.total_patterns,
-        contexts = context_count,
+        contexts_learned = context_count,
         successful_generations = M.stats.successful_generations
     }
 end
