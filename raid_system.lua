@@ -1,8 +1,17 @@
 -- raid_system.lua
 -- RAID 0 (Striping) across 4 drives for maximum capacity
--- RIGHT (2 drives) + BOTTOM (2 drives) = 4-drive RAID array
+-- RIGHT (2 drives) + LEFT (2 drives) = 4-drive RAID array
 
 local M = {}
+
+-- ============================================================================
+-- CRITICAL FIX: Convert peripheral names to mount paths
+-- ============================================================================
+local function getMountPath(peripheral_name)
+    if not peripheral_name then return nil end
+    if not peripheral.isPresent(peripheral_name) then return nil end
+    return disk.getMountPath(peripheral_name)
+end
 
 -- Detect RAID drives (using drive_config.lua)
 local function detectRAIDDrives()
@@ -10,11 +19,18 @@ local function detectRAIDDrives()
     local raid_drives = {}
     
     -- Combine LEFT and RIGHT drives (RAID storage)
-    for _, drive in ipairs(config.left) do
-        table.insert(raid_drives, drive)
+    -- MUST convert peripheral names to mount paths!
+    for _, drive in ipairs(config.left or {}) do
+        local mount_path = getMountPath(drive)
+        if mount_path then
+            table.insert(raid_drives, mount_path)
+        end
     end
-    for _, drive in ipairs(config.right) do
-        table.insert(raid_drives, drive)
+    for _, drive in ipairs(config.right or {}) do
+        local mount_path = getMountPath(drive)
+        if mount_path then
+            table.insert(raid_drives, mount_path)
+        end
     end
     
     return raid_drives
@@ -92,7 +108,7 @@ function M.write(filepath, data)
         
         local f = fs.open(chunk_path, "w")
         if not f then
-            return false, "Failed to open file: " .. chunk_path
+            return false, "Failed to open: " .. chunk_path
         end
         f.write(chunk_data)
         f.close()
@@ -108,6 +124,9 @@ function M.write(filepath, data)
     end
     
     local mf = fs.open(meta_path, "w")
+    if not mf then
+        return false, "Failed to write metadata"
+    end
     mf.write(textutils.serialize(meta))
     mf.close()
     
@@ -259,7 +278,7 @@ function M.stats()
         total_space = total_space,
         used_space = used_space,
         free_space = free_space,
-        capacity_mb = total_space / (1024 * 1024)
+        capacity_kb = math.floor(total_space / 1024)
     }
 end
 
