@@ -309,6 +309,10 @@ local memory = {
     botName = DEFAULT_BOT_NAME
 }
 
+-- Debug mode for showing response sources
+local DEBUG_MODE = false
+local lastResponseSource = "unknown"
+
 -- Default categories
 local defaultCategories = {
     greeting = {"hi", "hello", "hey", "greetings", "sup", "yo"},
@@ -1366,7 +1370,31 @@ SYSTEM:
 • "my name is [name]"
 • "call yourself [name]"
 • "system health"
+• "debug on/off" - Show response sources
 ]]
+    end
+    
+    -- Debug command
+    if message:lower() == "debug on" then
+        DEBUG_MODE = true
+        return "Debug mode ON. I'll show which module generates each response."
+    end
+    
+    if message:lower() == "debug off" then
+        DEBUG_MODE = false
+        return "Debug mode OFF."
+    end
+    
+    if message:lower() == "debug status" or message:lower() == "debug" then
+        local stats_msg = "Debug mode: " .. (DEBUG_MODE and "ON" or "OFF") .. "\n"
+        stats_msg = stats_msg .. "Last response source: " .. lastResponseSource .. "\n"
+        if contextMarkov then
+            local stats = contextMarkov.getStats()
+            stats_msg = stats_msg .. "Patterns learned: " .. (stats.total_patterns or 0) .. "\n"
+            stats_msg = stats_msg .. "Contexts: " .. (stats.contexts_learned or 0) .. "\n"
+            stats_msg = stats_msg .. "Generations from training: " .. (stats.successful_generations or 0)
+        end
+        return stats_msg
     end
     
     safeCall(mood, "update", nil, user, message)
@@ -1993,18 +2021,22 @@ Give me a few examples and I'll learn from them!]]
         
     elseif intent == "greeting" then
         response = handleGreeting(user, message)
+        lastResponseSource = "BUILTIN (greeting handler)"
         
     elseif intent == "gratitude" then
         response = handleGratitude(user, message)
+        lastResponseSource = "BUILTIN (gratitude handler)"
         safeCall(personality, "evolve", nil, "positive", {messageType = "general"})
         safeCall(personality, "recordJokeReaction", nil, true)
         
     elseif intent == "question" then
         response = handleQuestion(user, message, userMood)
+        lastResponseSource = "BUILTIN (question handler)"
         safeCall(personality, "resetQuestionCount", nil)
         
     else
         response = handleStatement(user, message, userMood)
+        lastResponseSource = "BUILTIN (statement handler)"
     end
     
     -- Add wisdom occasionally for thoughtful conversations
@@ -2076,6 +2108,12 @@ Give me a few examples and I'll learn from them!]]
         local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
         if smart_response and #smart_response > 10 then
             response = smart_response
+            lastResponseSource = "CONTEXT_MARKOV (trained data)"
+            if DEBUG_MODE then
+                print("[DEBUG] Response from: CONTEXT_MARKOV")
+                local ctx = contextMarkov.detectContext(history_msgs, message)
+                print("[DEBUG] Context: " .. table.concat(ctx, ", "))
+            end
         end
     end
     
@@ -2144,6 +2182,11 @@ Give me a few examples and I'll learn from them!]]
     
     if memory.conversationCount % 5 == 0 then
         saveMemory()
+    end
+    
+    -- Debug output showing response source
+    if DEBUG_MODE and response then
+        print("[DEBUG] Source: " .. lastResponseSource)
     end
     
     return response
