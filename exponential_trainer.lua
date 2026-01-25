@@ -580,9 +580,21 @@ function M.train(num_conversations, turns_per_conversation)
         -- Update topic mastery
         state.topic_mastery[topic.name] = (state.topic_mastery[topic.name] or 0) + 1
         
+        -- Check if at capacity
+        if cm.atCapacity and cm.atCapacity() then
+            print("")
+            print("*** TRAINING CAPACITY REACHED ***")
+            print("Max patterns: 50,000")
+            print("Use 'reset training' to clear and start fresh")
+            break
+        end
+        
         -- Progress update (every 2000)
         if trained % 2000 == 0 then
-            print(string.format("Progress: %d/%d (%.1f%%)", trained, num_conversations, (trained/num_conversations)*100))
+            local stats = cm.getStats()
+            print(string.format("Progress: %d/%d (%.1f%%) | Patterns: %d", 
+                trained, num_conversations, (trained/num_conversations)*100,
+                stats.total_patterns or 0))
             
             -- Save periodically (RAID handles large data now)
             local ok, err = pcall(function()
