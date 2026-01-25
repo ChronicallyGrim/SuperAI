@@ -91,6 +91,9 @@ function M.write(filepath, data)
         end
         
         local f = fs.open(chunk_path, "w")
+        if not f then
+            return false, "Failed to open file: " .. chunk_path
+        end
         f.write(chunk_data)
         f.close()
         
