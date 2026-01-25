@@ -389,126 +389,100 @@ end
 -- ============================================================================
 
 local function getSystemHealth()
-    -- Collect drive data first
-    local driveData = {}
-    local sides = {"top", "bottom", "left", "right", "front", "back"}
+    local lines = {}
+    table.insert(lines, "=== System Health ===")
     
-    for _, side in ipairs(sides) do
-        sleep(0) -- Yield to OS
-        
-        if peripheral.isPresent(side) and peripheral.getType(side) == "drive" then
-            local drv = peripheral.wrap(side)
-            local success, mountPath = pcall(function() return drv.getMountPath() end)
-            
-            if success and mountPath then
-                local path = "/" .. mountPath
-                if fs.exists(path) then
-                    local capacity = fs.getCapacity(path)
-                    local free = fs.getFreeSpace(path)
-                    local used = capacity - free
-                    local usedPercent = math.floor((used / capacity) * 100)
-                    local files = fs.list(path)
-                    
-                    driveData[side] = {
-                        mount = mountPath,
-                        cap = math.floor(capacity / 1024),
-                        used = math.floor(used / 1024),
-                        percent = usedPercent,
-                        free = math.floor(free / 1024),
-                        files = #files
-                    }
-                end
-            end
+    -- Helper to get drive stats
+    local function getDriveStats(peripheral_name)
+        if not peripheral_name then return nil end
+        if not peripheral.isPresent(peripheral_name) then return nil end
+        local mount = disk.getMountPath(peripheral_name)
+        if not mount then return nil end
+        local path = "/" .. mount
+        if not fs.exists(path) then return nil end
+        local cap = fs.getCapacity(path) or 0
+        local free = fs.getFreeSpace(path) or 0
+        local used = cap - free
+        return {
+            mount = mount,
+            usedKB = math.floor(used / 1024),
+            capKB = math.floor(cap / 1024),
+            freeKB = math.floor(free / 1024),
+            pct = cap > 0 and math.floor((used / cap) * 100) or 0
+        }
+    end
+    
+    -- Load drive config
+    local config = nil
+    pcall(function() config = require("drive_config") end)
+    
+    -- TOP DRIVE (code storage)
+    local topDrive = config and config.top or "top"
+    local top = getDriveStats(topDrive)
+    if top then
+        table.insert(lines, "TOP: " .. top.usedKB .. "/" .. top.capKB .. "KB (" .. top.pct .. "%) [" .. top.mount .. "]")
+    end
+    
+    -- RAM DRIVES (bottom + back = 6 drives)
+    if config then
+        local ramTotal, ramUsed, ramCount = 0, 0, 0
+        for _, drv in ipairs(config.bottom or {}) do
+            local s = getDriveStats(drv)
+            if s then ramTotal = ramTotal + s.capKB; ramUsed = ramUsed + s.usedKB; ramCount = ramCount + 1 end
+        end
+        for _, drv in ipairs(config.back or {}) do
+            local s = getDriveStats(drv)
+            if s then ramTotal = ramTotal + s.capKB; ramUsed = ramUsed + s.usedKB; ramCount = ramCount + 1 end
+        end
+        if ramCount > 0 then
+            local ramPct = ramTotal > 0 and math.floor((ramUsed / ramTotal) * 100) or 0
+            table.insert(lines, "RAM: " .. ramUsed .. "/" .. ramTotal .. "KB (" .. ramPct .. "%) [" .. ramCount .. " drives]")
         end
     end
     
-    -- Build visual layout
-    local lines = {}
-    
-    -- Title
-    table.insert(lines, "=== System Health ===")
-    table.insert(lines, "")
-    
-    -- TOP DRIVE
-    if driveData.top then
-        local d = driveData.top
-        table.insert(lines, "         --- Top Drive (" .. d.mount .. ") ---")
-        table.insert(lines, "         " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
-        table.insert(lines, "")
+    -- RAID DRIVES (left + right = 4 drives)
+    if config then
+        local raidTotal, raidUsed, raidCount = 0, 0, 0
+        for _, drv in ipairs(config.left or {}) do
+            local s = getDriveStats(drv)
+            if s then raidTotal = raidTotal + s.capKB; raidUsed = raidUsed + s.usedKB; raidCount = raidCount + 1 end
+        end
+        for _, drv in ipairs(config.right or {}) do
+            local s = getDriveStats(drv)
+            if s then raidTotal = raidTotal + s.capKB; raidUsed = raidUsed + s.usedKB; raidCount = raidCount + 1 end
+        end
+        if raidCount > 0 then
+            local raidPct = raidTotal > 0 and math.floor((raidUsed / raidTotal) * 100) or 0
+            table.insert(lines, "RAID: " .. raidUsed .. "/" .. raidTotal .. "KB (" .. raidPct .. "%) [" .. raidCount .. " drives]")
+        end
     end
     
-    -- LEFT and RIGHT DRIVES (side by side)
-    local leftLines = {}
-    local rightLines = {}
-    
-    if driveData.left then
-        local d = driveData.left
-        table.insert(leftLines, "Left (" .. d.mount .. "):")
-        table.insert(leftLines, d.used .. "/" .. d.cap .. " KB")
-        table.insert(leftLines, "(" .. d.percent .. "%)")
-        table.insert(leftLines, d.files .. " files")
-    else
-        table.insert(leftLines, "")
-        table.insert(leftLines, "")
-        table.insert(leftLines, "")
-        table.insert(leftLines, "")
+    -- Training stats
+    if contextMarkov then
+        local stats = contextMarkov.getStats()
+        if stats then
+            table.insert(lines, "TRAIN: " .. (stats.total_patterns or 0) .. " patterns | " .. (stats.contexts_learned or 0) .. " ctx")
+        end
     end
     
-    if driveData.right then
-        local d = driveData.right
-        table.insert(rightLines, "Right (" .. d.mount .. "):")
-        table.insert(rightLines, d.used .. "/" .. d.cap .. " KB")
-        table.insert(rightLines, "(" .. d.percent .. "%)")
-        table.insert(rightLines, d.files .. " files")
-    else
-        table.insert(rightLines, "")
-        table.insert(rightLines, "")
-        table.insert(rightLines, "")
-        table.insert(rightLines, "")
+    -- Generation stats
+    local expState = nil
+    pcall(function()
+        local exp = require("exponential_trainer")
+        expState = exp.getState()
+    end)
+    if expState and expState.generation then
+        table.insert(lines, "GEN: " .. expState.generation .. " | Int: " .. 
+            string.format("%.1f", expState.student_intelligence or 1) .. "/" ..
+            string.format("%.1f", expState.teacher_intelligence or 1))
     end
     
-    -- Combine left and right with spacing
-    for i = 1, 4 do
-        local left = leftLines[i] or ""
-        local right = rightLines[i] or ""
-        -- Pad left side to 25 chars
-        left = left .. string.rep(" ", 25 - #left)
-        table.insert(lines, left .. right)
-    end
-    
-    table.insert(lines, "")
-    
-    -- FRONT DRIVE
-    if driveData.front then
-        local d = driveData.front
-        table.insert(lines, "        --- Front Drive (" .. d.mount .. ") ---")
-        table.insert(lines, "        " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
-        table.insert(lines, "")
-    end
-    
-    -- BACK DRIVE
-    if driveData.back then
-        local d = driveData.back
-        table.insert(lines, "        --- Back Drive (" .. d.mount .. ") ---")
-        table.insert(lines, "        " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
-        table.insert(lines, "")
-    end
-    
-    -- BOTTOM DRIVE
-    if driveData.bottom then
-        local d = driveData.bottom
-        table.insert(lines, "       --- Bottom Drive (" .. d.mount .. ") ---")
-        table.insert(lines, "       " .. d.used .. "/" .. d.cap .. " KB (" .. d.percent .. "%) | " .. d.files .. " files")
-        table.insert(lines, "")
-    end
-    
-    -- Stats
-    table.insert(lines, "Stats:")
-    table.insert(lines, "  Msg: " .. memory.conversationCount .. " | Facts: " .. (memory.facts["Player"] and #memory.facts["Player"] or 0))
-    table.insert(lines, "  Context: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
+    -- Memory stats
+    table.insert(lines, "MSG: " .. memory.conversationCount .. " | Facts: " .. 
+        (memory.facts["Player"] and #memory.facts["Player"] or 0))
     
     local uptime = os.time() - memory.startTime
-    table.insert(lines, "  Uptime: " .. math.floor(uptime / 60) .. " hrs")
+    table.insert(lines, "UP: " .. math.floor(uptime / 60) .. "h | Ctx: " .. #memory.context .. "/" .. CONTEXT_WINDOW)
     
     return table.concat(lines, "\n")
 end
@@ -1393,8 +1367,31 @@ SYSTEM:
             stats_msg = stats_msg .. "Patterns learned: " .. (stats.total_patterns or 0) .. "\n"
             stats_msg = stats_msg .. "Contexts: " .. (stats.contexts_learned or 0) .. "\n"
             stats_msg = stats_msg .. "Generations from training: " .. (stats.successful_generations or 0)
+            if stats.at_capacity then
+                stats_msg = stats_msg .. "\n*** AT CAPACITY - use 'reset training' ***"
+            end
         end
         return stats_msg
+    end
+    
+    -- Reset training data
+    if message:lower() == "reset training" then
+        print("This will DELETE all trained patterns!")
+        write("Type YES to confirm: ")
+        local confirm = read()
+        if confirm and confirm:upper() == "YES" then
+            if contextMarkov and contextMarkov.reset then
+                contextMarkov.reset()
+            end
+            -- Also reset exponential trainer state
+            pcall(function()
+                local exp = require("exponential_trainer")
+                exp.resetState()
+            end)
+            return "Training data reset! Ready to learn fresh."
+        else
+            return "Reset cancelled."
+        end
     end
     
     safeCall(mood, "update", nil, user, message)
