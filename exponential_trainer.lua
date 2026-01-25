@@ -479,22 +479,35 @@ function M.train(num_conversations, turns_per_conversation)
         -- Update topic mastery
         state.topic_mastery[topic.name] = (state.topic_mastery[topic.name] or 0) + 1
         
-        -- Progress update
-        if trained % 500 == 0 then
+        -- Progress update (every 2000)
+        if trained % 2000 == 0 then
             print(string.format("Progress: %d/%d (%.1f%%)", trained, num_conversations, (trained/num_conversations)*100))
             
-            -- Save periodically
-            cm.save("context_markov.dat")
+            -- Save periodically (RAID handles large data now)
+            local ok, err = pcall(function()
+                cm.save("context_markov.dat")
+            end)
+            if not ok then
+                print("Warning: Save failed - " .. tostring(err))
+            end
         end
         
         -- Yield to prevent timeout
-        if trained % 25 == 0 then
+        if trained % 50 == 0 then
             os.sleep(0)
         end
     end
     
     -- Final save
-    cm.save("context_markov.dat")
+    print("Saving final training data...")
+    local ok, err = pcall(function()
+        cm.save("context_markov.dat")
+    end)
+    if ok then
+        print("Training data saved successfully!")
+    else
+        print("Warning: Final save had issues - " .. tostring(err))
+    end
     
     local elapsed = os.clock() - start_time
     
