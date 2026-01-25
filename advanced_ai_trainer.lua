@@ -75,16 +75,25 @@ local function initDrives()
     
     print(string.format("Found %d RAM drives, %d RAID drives", #RAM_DRIVES, #RAID_DRIVES))
     
-    if #RAM_DRIVES == 0 then
-        error("No RAM drives found! Need LEFT or BACK drives.")
+    -- Show actual mount paths for debugging
+    print("RAM drives (mount paths):")
+    for i, drive in ipairs(RAM_DRIVES) do
+        print("  [" .. i .. "] " .. drive)
     end
     
-    -- Clear all RAM drives
+    if #RAM_DRIVES == 0 then
+        error("No RAM drives found! Need BACK or BOTTOM drives.")
+    end
+    
+    -- Clear all RAM drives and create swap directories
     for _, drive in ipairs(RAM_DRIVES) do
         if fs.exists(drive .. "/swap") then
             fs.delete(drive .. "/swap")
         end
-        fs.makeDir(drive .. "/swap")
+        local ok = fs.makeDir(drive .. "/swap")
+        if not fs.exists(drive .. "/swap") then
+            print("WARNING: Could not create " .. drive .. "/swap")
+        end
     end
 end
 
@@ -97,11 +106,14 @@ end
 
 -- Write to rotating RAM drive
 local function swapWrite(key, data, drive)
-    local f = fs.open(drive .. "/swap/" .. key, "w")
+    local path = drive .. "/swap/" .. key
+    local f = fs.open(path, "w")
+    if not f then return false end
     for k, v in pairs(data) do
         f.writeLine(k .. "=" .. tostring(v))
     end
     f.close()
+    return true
 end
 
 -- Read from RAM drive
@@ -109,6 +121,7 @@ local function swapRead(key, drive)
     local path = drive .. "/swap/" .. key
     if not fs.exists(path) then return nil end
     local f = fs.open(path, "r")
+    if not f then return nil end
     local data = {}
     while true do
         local line = f.readLine()
@@ -125,6 +138,7 @@ end
 -- Personality functions (simple key=value format, no serialize!)
 local function writePersonality(id, role, traits, metrics, drive)
     local f = fs.open(drive .. "/swap/p_" .. id, "w")
+    if not f then return false end
     f.writeLine("role=" .. role)
     for k, v in pairs(traits) do
         f.writeLine("trait_" .. k .. "=" .. tostring(v))
@@ -133,12 +147,14 @@ local function writePersonality(id, role, traits, metrics, drive)
         f.writeLine("metric_" .. k .. "=" .. tostring(v))
     end
     f.close()
+    return true
 end
 
 local function readPersonality(id, drive)
     local path = drive .. "/swap/p_" .. id
     if not fs.exists(path) then return nil end
     local f = fs.open(path, "r")
+    if not f then return nil end
     local role, traits, metrics = nil, {}, {}
     while true do
         local line = f.readLine()
@@ -163,7 +179,19 @@ local function writeContext(conv_id, topic, emotion, depth, qstreak, exchanges)
     local drive = getNextRAMDrive()  -- Rotate!
     conv_to_drive[conv_id] = drive
     
+    -- Ensure swap directory exists
+    if not fs.exists(drive .. "/swap") then
+        fs.makeDir(drive .. "/swap")
+    end
+    
     local f = fs.open(drive .. "/swap/c_" .. conv_id, "w")
+    if not f then
+        -- Fallback: try computer root
+        f = fs.open("swap_c_" .. conv_id, "w")
+        if not f then
+            return false  -- Can't write anywhere
+        end
+    end
     f.writeLine(topic)
     f.writeLine(emotion)
     f.writeLine(tostring(depth))
@@ -174,6 +202,7 @@ local function writeContext(conv_id, topic, emotion, depth, qstreak, exchanges)
         f.writeLine(ex.message:gsub("\n", "\\n"))
     end
     f.close()
+    return true
 end
 
 local function readContext(conv_id)
@@ -184,16 +213,21 @@ local function readContext(conv_id)
     if not fs.exists(path) then return nil end
     
     local f = fs.open(path, "r")
+    if not f then return nil end
+    
     local topic = f.readLine()
     local emotion = f.readLine()
-    local depth = tonumber(f.readLine())
-    local qstreak = tonumber(f.readLine())
-    local count = tonumber(f.readLine())
+    local depth = tonumber(f.readLine() or "0")
+    local qstreak = tonumber(f.readLine() or "0")
+    local count = tonumber(f.readLine() or "0")
     local exchanges = {}
     for i = 1, count do
         local speaker = f.readLine()
-        local message = f.readLine():gsub("\\n", "\n")
-        table.insert(exchanges, {speaker = speaker, message = message})
+        local msg_line = f.readLine()
+        if speaker and msg_line then
+            local message = msg_line:gsub("\\n", "\n")
+            table.insert(exchanges, {speaker = speaker, message = message})
+        end
     end
     f.close()
     
@@ -232,11 +266,14 @@ local function saveProgress(completed, total, s_conf, t_conf)
     }, "\n")
     
     if raid then
-        raid.write("training/progress.txt", content)
+        pcall(function() raid.write("training/progress.txt", content) end)
     else
+        if not fs.exists("/training") then fs.makeDir("/training") end
         local f = fs.open("/training/progress.txt", "w")
-        f.write(content)
-        f.close()
+        if f then
+            f.write(content)
+            f.close()
+        end
     end
 end
 
@@ -245,11 +282,14 @@ local function loadProgress()
     local content = nil
     
     if raid and raid.exists("training/progress.txt") then
-        content = raid.read("training/progress.txt")
+        local ok, result = pcall(function() return raid.read("training/progress.txt") end)
+        if ok then content = result end
     elseif fs.exists("/training/progress.txt") then
         local f = fs.open("/training/progress.txt", "r")
-        content = f.readAll()
-        f.close()
+        if f then
+            content = f.readAll()
+            f.close()
+        end
     end
     
     if not content then
@@ -393,11 +433,14 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
     else
         -- Load existing data if appending
         if raid and raid.exists("training/conversation_log.csv") then
-            csv_data = raid.read("training/conversation_log.csv")
+            local ok, result = pcall(function() return raid.read("training/conversation_log.csv") end)
+            if ok and result then csv_data = result end
         elseif fs.exists("/training/conversation_log.csv") then
             local f = fs.open("/training/conversation_log.csv", "r")
-            csv_data = f.readAll()
-            f.close()
+            if f then
+                csv_data = f.readAll()
+                f.close()
+            end
         end
     end
     
@@ -439,12 +482,14 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
         if (conv - start_conv + 1) % 50 == 0 then
             csv_data = csv_data .. table.concat(log_buffer)
             if raid then
-                raid.write("training/conversation_log.csv", csv_data)
+                pcall(function() raid.write("training/conversation_log.csv", csv_data) end)
             else
                 if not fs.exists("/training") then fs.makeDir("/training") end
                 local f = fs.open("/training/conversation_log.csv", "w")
-                f.write(csv_data)
-                f.close()
+                if f then
+                    f.write(csv_data)
+                    f.close()
+                end
             end
             log_buffer = {}  -- Clear buffer
         end
@@ -462,12 +507,14 @@ function M.runBatch(start_conv, end_conv, turns, s_conf, t_conf)
     if #log_buffer > 0 then
         csv_data = csv_data .. table.concat(log_buffer)
         if raid then
-            raid.write("training/conversation_log.csv", csv_data)
+            pcall(function() raid.write("training/conversation_log.csv", csv_data) end)
         else
             if not fs.exists("/training") then fs.makeDir("/training") end
             local f = fs.open("/training/conversation_log.csv", "w")
-            f.write(csv_data)
-            f.close()
+            if f then
+                f.write(csv_data)
+                f.close()
+            end
         end
     end
     
