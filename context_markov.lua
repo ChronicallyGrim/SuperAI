@@ -158,12 +158,18 @@ end
 -- ============================================================================
 
 -- Maximum sequences per key (prevents unbounded growth)
-local MAX_SEQUENCES_PER_KEY = 20
-local MAX_CONTEXTS = 100
+local MAX_SEQUENCES_PER_KEY = 10  -- Reduced from 20
+local MAX_CONTEXTS = 50           -- Reduced from 100
+local MAX_TOTAL_PATTERNS = 50000  -- Hard limit on total patterns
 
 function M.trainWithContext(message, response, context_tags)
     if not message or not response or #message == 0 or #response == 0 then
         return
+    end
+    
+    -- Check total patterns limit
+    if M.stats.total_patterns >= MAX_TOTAL_PATTERNS then
+        return  -- Stop learning when limit reached
     end
     
     -- Create context key
@@ -680,8 +686,36 @@ function M.getStats()
     return {
         total_patterns = M.stats.total_patterns,
         contexts_learned = context_count,
-        successful_generations = M.stats.successful_generations
+        successful_generations = M.stats.successful_generations,
+        max_patterns = MAX_TOTAL_PATTERNS,
+        at_capacity = M.stats.total_patterns >= MAX_TOTAL_PATTERNS
     }
+end
+
+-- Check if training has reached capacity
+function M.atCapacity()
+    return M.stats.total_patterns >= MAX_TOTAL_PATTERNS
+end
+
+-- Reset all training data
+function M.reset()
+    M.chains = {
+        contexts = {},
+        word_chains = {},
+        response_starters = {}
+    }
+    M.stats = {
+        total_patterns = 0,
+        contexts_learned = 0,
+        successful_generations = 0
+    }
+    
+    -- Delete saved files
+    pcall(function() fs.delete("context_markov.dat") end)
+    pcall(function() fs.delete("context_markov.dat.raid") end)
+    
+    print("Training data reset!")
+    return true
 end
 
 return M
