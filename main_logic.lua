@@ -2090,19 +2090,38 @@ Give me a few examples and I'll learn from them!]]
         safeCall(personality, "recordJokeReaction", nil, true)
         
     elseif intent == "question" then
-        -- TRY CONTEXT MARKOV FIRST (use trained data!)
+        -- Detect if this is a PERSONAL question vs a TOPIC question
+        local lower_msg = message:lower()
+        local is_personal = lower_msg:find("how are you") or 
+                           lower_msg:find("how're you") or
+                           lower_msg:find("how do you feel") or
+                           lower_msg:find("what's up") or
+                           lower_msg:find("whats up") or
+                           lower_msg:find("you doing") or
+                           lower_msg:find("are you ok") or
+                           lower_msg:find("you alright") or
+                           lower_msg:find("how's it going") or
+                           lower_msg:find("what are you") or
+                           lower_msg:find("who are you") or
+                           lower_msg:find("your name") or
+                           lower_msg:find("about yourself")
+        
+        -- Only use trained data for TOPIC questions (what/how/why about things)
         local used_markov = false
-        if contextMarkov then
+        if contextMarkov and not is_personal then
             local history_msgs = {}
             local history = getContextualHistory(user, 5)
             for _, h in ipairs(history) do
                 if h.response then table.insert(history_msgs, h.response) end
             end
             local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
-            -- Only use if it looks like an answer (not the repetitive training phrases)
+            -- Only use if it looks like a real answer (not generic training phrases)
             if smart_response and #smart_response > 10 then
                 local dominated_by_training = smart_response:find("The key is how parts") or
-                                              smart_response:find("Think of it like organizing")
+                                              smart_response:find("Think of it like organizing") or
+                                              smart_response:find("connects different ideas") or
+                                              smart_response:find("is a fundamental concept") or
+                                              smart_response:find("simple answer is that")
                 if not dominated_by_training then
                     response = smart_response
                     lastResponseSource = "CONTEXT_MARKOV (trained question)"
@@ -2111,7 +2130,7 @@ Give me a few examples and I'll learn from them!]]
                         print("[DEBUG] Used TRAINED response for question")
                     end
                 elseif DEBUG_MODE then
-                    print("[DEBUG] Skipped repetitive training phrase")
+                    print("[DEBUG] Skipped generic training phrase")
                 end
             end
         end
