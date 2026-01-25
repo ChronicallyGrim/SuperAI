@@ -106,12 +106,28 @@ function M.write(filepath, data)
             fs.makeDir(dir)
         end
         
+        -- Check available space first
+        local free = fs.getFreeSpace("/" .. drive) or 0
+        if free < #chunk_data + 1000 then
+            return false, "Not enough space on " .. drive .. " (need " .. #chunk_data .. ", have " .. free .. ")"
+        end
+        
         local f = fs.open(chunk_path, "w")
         if not f then
             return false, "Failed to open: " .. chunk_path
         end
-        f.write(chunk_data)
+        
+        -- Wrap write in pcall to catch out of space
+        local ok, err = pcall(function()
+            f.write(chunk_data)
+        end)
         f.close()
+        
+        if not ok then
+            -- Clean up partial file
+            pcall(function() fs.delete(chunk_path) end)
+            return false, "Write failed: " .. tostring(err)
+        end
         
         table.insert(meta.drives_used, {drive = drive, chunk = chunk_idx})
     end
