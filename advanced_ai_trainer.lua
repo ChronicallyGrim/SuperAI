@@ -396,20 +396,103 @@ local function addExchange(conv_id, speaker, message)
     return ctx
 end
 
--- Templates (loaded once)
+-- Templates (EXPANDED for better training variety)
 local ST = {
-    g = {"Hey! How's it going?", "Hi! What's up?", "Hello! What's new?", "Yo! Ready to learn?"},
-    q = {"How does that work?", "Can you explain more?", "What do you mean?", "Why is that important?", "What's the best way?"},
-    r = {"That's interesting!", "Oh I see!", "That makes sense!", "Cool, thanks!"},
-    a = {"Got it!", "I understand!", "Makes sense!", "Awesome!"},
-    d = {"What's the underlying principle?", "How does this connect?"}
+    -- Greetings (20+ variations)
+    g = {
+        "Hey! How's it going?", "Hi! What's up?", "Hello! What's new?", "Yo! Ready to learn?",
+        "Hey there!", "Hi! Good to see you!", "Hello! How are you?", "What's happening?",
+        "Hey! What are you up to?", "Hi! How's your day going?", "Hello friend!",
+        "Hey! Nice to chat with you!", "Hi! What's on your mind?", "Greetings!",
+        "Hey! Long time no see!", "Hi there! How have you been?", "Hello! Ready to chat?",
+        "Hey! I was hoping you'd stop by!", "Hi! What brings you here today?"
+    },
+    -- Questions (30+ variations)
+    q = {
+        "How does that work?", "Can you explain more?", "What do you mean?", "Why is that important?",
+        "What's the best way?", "Could you tell me more?", "I'm curious, how?", "What makes it work?",
+        "Why do you think that?", "How did you figure that out?", "What happens next?",
+        "Can you give an example?", "What would you recommend?", "How do I get started?",
+        "What should I try first?", "Is there a better approach?", "What are the options?",
+        "How long does it take?", "What are the steps involved?", "Why is it done that way?",
+        "What are the advantages?", "Are there any downsides?", "How does that help?",
+        "What's the difference between those?", "Which one should I choose?", "How do I know if it's working?",
+        "What happens if I mess up?", "Can I try a different way?", "What's the most common mistake?"
+    },
+    -- Reactions (20+ variations)
+    r = {
+        "That's interesting!", "Oh I see!", "That makes sense!", "Cool, thanks!",
+        "Wow, I didn't know that!", "That's really helpful!", "Interesting approach!",
+        "I never thought of it that way!", "That's a good point!", "Ah, now I get it!",
+        "That clears things up!", "Great explanation!", "I appreciate that!",
+        "That's exactly what I needed!", "Perfect, thank you!", "I'll remember that!",
+        "Very insightful!", "That helps a lot!", "Now it clicks!", "Oh, that's clever!"
+    },
+    -- Acknowledgments (15+ variations)
+    a = {
+        "Got it!", "I understand!", "Makes sense!", "Awesome!",
+        "Okay, I follow!", "Right, I see!", "Understood!", "Yep, that's clear!",
+        "Alright!", "Sure thing!", "I'm with you!", "Definitely!",
+        "Absolutely!", "Of course!", "I can see that!"
+    },
+    -- Deep questions (15+ variations)
+    d = {
+        "What's the underlying principle?", "How does this connect?",
+        "What's the theory behind this?", "Why was it designed this way?",
+        "What problem does this solve?", "How did this evolve over time?",
+        "What are the fundamental concepts?", "How does this relate to other things?",
+        "What's the bigger picture here?", "Why is this approach preferred?",
+        "What assumptions are we making?", "How do experts think about this?",
+        "What's the historical context?", "How might this change in the future?"
+    }
 }
 
 local TT = {
-    g = {"Hey! Ready to learn?", "Hi! What would you like to know?"},
-    e = {"Great question! Let me explain.", "Think of it like organizing information.", "The key is how parts work together."},
-    c = {"You're getting it!", "Exactly!", "Perfect!"},
-    f = {"Make sense?", "Questions?", "Got it?"}
+    -- Teacher greetings (15+ variations)
+    g = {
+        "Hey! Ready to learn?", "Hi! What would you like to know?",
+        "Hello! Great to see you!", "Hey there! What can I help with?",
+        "Hi! Ask me anything!", "Welcome! What's on your mind?",
+        "Hello! Let's explore together!", "Hey! I'm here to help!",
+        "Hi there! What interests you today?", "Greetings! Ready when you are!",
+        "Hello! What would you like to discover?", "Hey! Let's dive in!",
+        "Hi! I'd love to help you learn!", "Welcome back! What's next?"
+    },
+    -- Explanations (40+ variations for better variety)
+    e = {
+        "Great question! Let me explain.", "Think of it like organizing information.", "The key is how parts work together.",
+        "Here's how I think about it.", "Let me break that down for you.", "It's actually simpler than it seems.",
+        "The basic idea is this.", "Imagine it like building blocks.", "The core concept is straightforward.",
+        "Think of it step by step.", "Here's a simple way to understand it.", "Let me give you an example.",
+        "Picture it this way.", "The important thing to remember is.", "It works like a puzzle.",
+        "There are a few key points here.", "The foundation is pretty simple.", "Start with the basics first.",
+        "Let me walk you through it.", "Consider it from this angle.", "The trick is to break it into pieces.",
+        "Once you understand this part, the rest follows.", "It's all about the connections.", "The pattern you'll notice is.",
+        "Here's what makes it work.", "The secret is in the details.", "Think about what happens when.",
+        "The reason behind this is.", "Each part has a purpose.", "It builds on simpler ideas.",
+        "The clever thing about this is.", "Notice how these relate.", "The logic goes like this.",
+        "What's interesting is how.", "The design makes sense when you see.", "Follow this chain of thought.",
+        "The underlying structure is.", "It's elegant once you see it.", "The beauty of this approach is.",
+        "Here's the intuition behind it."
+    },
+    -- Confirmations (20+ variations)
+    c = {
+        "You're getting it!", "Exactly!", "Perfect!",
+        "That's right!", "Spot on!", "You've got it!",
+        "Precisely!", "Correct!", "Nailed it!",
+        "Absolutely right!", "Yes, exactly!", "That's the idea!",
+        "You understand perfectly!", "Bingo!", "That's it exactly!",
+        "Well done!", "You're on the right track!", "Excellent thinking!",
+        "That's a great way to put it!", "You're really getting this!"
+    },
+    -- Follow-ups (15+ variations)
+    f = {
+        "Make sense?", "Questions?", "Got it?",
+        "Does that help?", "Clear so far?", "Following along?",
+        "Want me to elaborate?", "Need more details?", "Anything unclear?",
+        "Should I explain further?", "Ready for more?", "Want an example?",
+        "Does that click?", "See what I mean?", "Want to try it?"
+    }
 }
 
 local function choose(list)
