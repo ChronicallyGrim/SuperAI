@@ -1,18 +1,52 @@
 -- advanced_ai_trainer.lua (Multi-Drive RAM System)
--- Uses 6 RAM drives (LEFT + BACK) for massive virtual memory capacity
+-- Uses 6 RAM drives (BACK + BOTTOM) for massive virtual memory capacity
 
 local M = {}
 
--- Detect drives by side (using drive_config.lua)
+-- ============================================================================
+-- CRITICAL FIX: Convert peripheral names to mount paths
+-- ============================================================================
+local function getMountPath(peripheral_name)
+    if not peripheral_name then return nil end
+    if not peripheral.isPresent(peripheral_name) then return nil end
+    return disk.getMountPath(peripheral_name)
+end
+
+-- Detect drives by side (using drive_config.lua) - returns MOUNT PATHS
 local function getDrivesBySide()
     local config = require("drive_config")
-    return {
-        left = config.left,
-        back = config.back,
-        right = config.right,
-        bottom = config.bottom,
-        top = config.top and {config.top} or {}
+    
+    local result = {
+        left = {},
+        back = {},
+        right = {},
+        bottom = {},
+        top = {}
     }
+    
+    -- Convert all peripheral names to mount paths
+    for _, name in ipairs(config.left or {}) do
+        local path = getMountPath(name)
+        if path then table.insert(result.left, path) end
+    end
+    for _, name in ipairs(config.back or {}) do
+        local path = getMountPath(name)
+        if path then table.insert(result.back, path) end
+    end
+    for _, name in ipairs(config.right or {}) do
+        local path = getMountPath(name)
+        if path then table.insert(result.right, path) end
+    end
+    for _, name in ipairs(config.bottom or {}) do
+        local path = getMountPath(name)
+        if path then table.insert(result.bottom, path) end
+    end
+    if config.top then
+        local path = getMountPath(config.top)
+        if path then table.insert(result.top, path) end
+    end
+    
+    return result
 end
 
 -- Initialize drive system
