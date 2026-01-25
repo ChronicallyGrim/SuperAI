@@ -6,24 +6,30 @@ local M = {}
 -- User database stored per user
 local users = {}
 
--- Load user data from RAID if available
+-- Load user data from RAID if available (with fallback to local)
 local function loadUserData()
-    local raid = nil
-    local success, module = pcall(require, "raid_system")
+    local loaded = false
+    
+    -- Try RAID first
+    local success, raid = pcall(require, "raid_system")
     if success then
-        raid = module
-        raid.init()
-        
-        if raid.exists("superai_data/users.dat") then
-            local content = raid.read("superai_data/users.dat")
-            if content then
-                users = textutils.unserialize(content) or {}
+        local init_ok = pcall(function() raid.init() end)
+        if init_ok then
+            local exists_ok, exists = pcall(function() return raid.exists("superai_data/users.dat") end)
+            if exists_ok and exists then
+                local read_ok, content = pcall(function() return raid.read("superai_data/users.dat") end)
+                if read_ok and content then
+                    users = textutils.unserialize(content) or {}
+                    loaded = true
+                end
             end
         end
-    else
-        -- Fallback to local storage
-        if fs.exists("users.dat") then
-            local f = fs.open("users.dat", "r")
+    end
+    
+    -- Fall back to local storage
+    if not loaded and fs.exists("users.dat") then
+        local f = fs.open("users.dat", "r")
+        if f then
             local content = f.readAll()
             f.close()
             users = textutils.unserialize(content) or {}
@@ -31,19 +37,31 @@ local function loadUserData()
     end
 end
 
--- Save user data to RAID
+-- Save user data to RAID (with fallback to local)
 local function saveUserData()
-    local raid = nil
-    local success, module = pcall(require, "raid_system")
+    local saved = false
+    
+    -- Try RAID first
+    local success, raid = pcall(require, "raid_system")
     if success then
-        raid = module
-        raid.init()
-        raid.write("superai_data/users.dat", textutils.serialize(users))
-    else
-        -- Fallback to local storage
+        local init_ok = pcall(function() raid.init() end)
+        if init_ok then
+            local write_ok = pcall(function()
+                raid.write("superai_data/users.dat", textutils.serialize(users))
+            end)
+            if write_ok then
+                saved = true
+            end
+        end
+    end
+    
+    -- Always save locally as backup (and fallback)
+    if not saved then
         local f = fs.open("users.dat", "w")
-        f.write(textutils.serialize(users))
-        f.close()
+        if f then
+            f.write(textutils.serialize(users))
+            f.close()
+        end
     end
 end
 
