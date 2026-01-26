@@ -1343,8 +1343,11 @@ GRAPHS:
 SYSTEM:
 • "my name is [name]"
 • "call yourself [name]"
-• "system health"
-• "debug on/off" - Show response sources
+• "change color" - Pick chat color
+• "system health" - Show all drives
+• "training menu" - AI training
+• "debug on/off" - Show sources
+• "reset training" - Clear learned data
 ]]
     end
     
@@ -1391,6 +1394,50 @@ SYSTEM:
             return "Training data reset! Ready to learn fresh."
         else
             return "Reset cancelled."
+        end
+    end
+    
+    -- Quick color picker command
+    if message:lower() == "colors" or message:lower() == "color" or message:lower() == "change color" then
+        print("")
+        print("Pick a chat color:")
+        local chatColors = {
+            {name = "white", code = colors.white},
+            {name = "orange", code = colors.orange},
+            {name = "magenta", code = colors.magenta},
+            {name = "lightBlue", code = colors.lightBlue},
+            {name = "yellow", code = colors.yellow},
+            {name = "lime", code = colors.lime},
+            {name = "pink", code = colors.pink},
+            {name = "cyan", code = colors.cyan},
+            {name = "purple", code = colors.purple},
+            {name = "blue", code = colors.blue},
+            {name = "green", code = colors.green},
+            {name = "red", code = colors.red},
+            {name = "lightGray", code = colors.lightGray},
+            {name = "gray", code = colors.gray},
+        }
+        
+        -- Display in 2 columns
+        for i = 1, #chatColors, 2 do
+            local left = i .. ")" .. chatColors[i].name
+            local right = ""
+            if chatColors[i+1] then
+                right = (i+1) .. ")" .. chatColors[i+1].name
+            end
+            left = left .. string.rep(" ", 18 - #left)
+            print(left .. right)
+        end
+        
+        write("Number: ")
+        local choice = tonumber(read())
+        
+        if choice and chatColors[choice] then
+            memory.chatColor = chatColors[choice].code
+            saveMemory()
+            return "Changed to " .. chatColors[choice].name .. "!"
+        else
+            return "Keeping current color."
         end
     end
     
@@ -1988,25 +2035,37 @@ Give me a few examples and I'll learn from them!]]
     elseif intent == "change_settings" then
         if message:lower():find("color") then
             print("")
-            print("Pick a new chat color:")
+            print("Pick a chat color:")
             local chatColors = {
                 {name = "white", code = colors.white},
                 {name = "orange", code = colors.orange},
                 {name = "magenta", code = colors.magenta},
-                {name = "light blue", code = colors.lightBlue},
+                {name = "lightBlue", code = colors.lightBlue},
                 {name = "yellow", code = colors.yellow},
                 {name = "lime", code = colors.lime},
                 {name = "pink", code = colors.pink},
                 {name = "cyan", code = colors.cyan},
                 {name = "purple", code = colors.purple},
                 {name = "blue", code = colors.blue},
+                {name = "green", code = colors.green},
+                {name = "red", code = colors.red},
+                {name = "lightGray", code = colors.lightGray},
+                {name = "gray", code = colors.gray},
             }
             
-            for i, v in ipairs(chatColors) do
-                print(i .. ") " .. v.name)
+            -- Display in 2 columns to fit screen
+            for i = 1, #chatColors, 2 do
+                local left = i .. ")" .. chatColors[i].name
+                local right = ""
+                if chatColors[i+1] then
+                    right = (i+1) .. ")" .. chatColors[i+1].name
+                end
+                -- Pad left to 18 chars
+                left = left .. string.rep(" ", 18 - #left)
+                print(left .. right)
             end
             
-            write("Pick a number: ")
+            write("Number: ")
             local choice = tonumber(read())
             
             if choice and chatColors[choice] then
@@ -2140,7 +2199,26 @@ Give me a few examples and I'll learn from them!]]
     else
         -- For statements, prefer builtin but mix in trained occasionally
         local used_markov = false
-        if contextMarkov and math.random() < 0.3 then  -- 30% chance to try trained
+        local lower_msg = message:lower()
+        
+        -- Check if this is a PERSONAL statement (not suitable for topic-trained markov)
+        local is_personal_statement = 
+            lower_msg:find("^i'm ") or lower_msg:find("^im ") or
+            lower_msg:find("^i am ") or lower_msg:find("^i feel") or
+            lower_msg:find("^i think") or lower_msg:find("^i want") or
+            lower_msg:find("^i need") or lower_msg:find("^i have") or
+            lower_msg:find("^i like") or lower_msg:find("^i love") or
+            lower_msg:find("^i hate") or lower_msg:find("^i don't") or
+            lower_msg:find("good$") or lower_msg:find("great$") or
+            lower_msg:find("fine$") or lower_msg:find("okay$") or
+            lower_msg:find("tired$") or lower_msg:find("bored$") or
+            lower_msg:find("^ok$") or lower_msg:find("^yes$") or
+            lower_msg:find("^no$") or lower_msg:find("^yeah$") or
+            lower_msg:find("^nope$") or lower_msg:find("^sure$") or
+            #message < 15  -- Very short messages are usually personal/casual
+        
+        -- Only try markov for non-personal statements (topic discussions)
+        if contextMarkov and not is_personal_statement and math.random() < 0.4 then
             local history_msgs = {}
             local history = getContextualHistory(user, 5)
             for _, h in ipairs(history) do
@@ -2148,8 +2226,12 @@ Give me a few examples and I'll learn from them!]]
             end
             local smart_response = contextMarkov.generateWithContext(history_msgs, message, 15)
             if smart_response and #smart_response > 15 then
-                local dominated_by_training = smart_response:find("The key is how parts") or
-                                              smart_response:find("Think of it like organizing")
+                -- Filter out generic training phrases
+                local dominated_by_training = smart_response:find("The key is") or
+                                              smart_response:find("Think of it like") or
+                                              smart_response:find("Great question") or
+                                              smart_response:find("fundamental concept") or
+                                              smart_response:find("connects different")
                 if not dominated_by_training then
                     response = smart_response
                     lastResponseSource = "CONTEXT_MARKOV (trained statement)"
@@ -2537,25 +2619,36 @@ local function firstRunSetup()
     
     if not memory.chatColor or memory.chatColor == colors.white then
         print("")
-        print("What's your favorite chat color?")
+        print("Pick your chat color:")
         local chatColors = {
             {name = "white", code = colors.white},
             {name = "orange", code = colors.orange},
             {name = "magenta", code = colors.magenta},
-            {name = "light blue", code = colors.lightBlue},
+            {name = "lightBlue", code = colors.lightBlue},
             {name = "yellow", code = colors.yellow},
             {name = "lime", code = colors.lime},
             {name = "pink", code = colors.pink},
             {name = "cyan", code = colors.cyan},
             {name = "purple", code = colors.purple},
             {name = "blue", code = colors.blue},
+            {name = "green", code = colors.green},
+            {name = "red", code = colors.red},
+            {name = "lightGray", code = colors.lightGray},
+            {name = "gray", code = colors.gray},
         }
         
-        for i, v in ipairs(chatColors) do
-            print(i .. ") " .. v.name)
+        -- Display in 2 columns
+        for i = 1, #chatColors, 2 do
+            local left = i .. ")" .. chatColors[i].name
+            local right = ""
+            if chatColors[i+1] then
+                right = (i+1) .. ")" .. chatColors[i+1].name
+            end
+            left = left .. string.rep(" ", 18 - #left)
+            print(left .. right)
         end
         
-        write("Pick a number: ")
+        write("Number: ")
         local choice = tonumber(read())
         
         if choice and chatColors[choice] then
