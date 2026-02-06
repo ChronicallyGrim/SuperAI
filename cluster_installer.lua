@@ -1,5 +1,5 @@
--- cluster_installer.lua v7
--- Fixed: write startup.lua to master DISK not just computer root
+-- cluster_installer.lua v8
+-- Fixed: hardcode disk3 path in master startup
 
 print("===== MODUS CLUSTER INSTALLER =====")
 print("")
@@ -152,16 +152,14 @@ function M.generateContextual(d) return {response = g and g.generateContextual a
 return M
 ]]
 
-local MASTER_STARTUP = [[
-local p = disk.getMountPath("back")
-if p then shell.run(p.."/master_brain.lua") end
-]]
+-- HARDCODED master startup - disk.getMountPath fails at boot
+local MASTER_STARTUP = 'shell.run("' .. myDrive .. '/master_brain.lua")'
 
 local MASTER_BRAIN = [[
 local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","knowledge","memory","response"}
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
-print("=== MODUS v7 ===")
+print("=== MODUS v8 ===")
 local comps = {}
 for _, n in ipairs(peripheral.getNames()) do
     if peripheral.getType(n) == "computer" then
@@ -251,12 +249,10 @@ for _,w in pairs(workers) do rednet.send(w.id,{type="shutdown"},PROTOCOL) end
 
 print("Installing master...")
 local f = fs.open(myDrive.."/master_brain.lua", "w") f.write(MASTER_BRAIN) f.close()
--- Write startup to BOTH computer root AND disk (disk takes priority)
 f = fs.open("startup.lua", "w") f.write(MASTER_STARTUP) f.close()
 f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
 print("  + master_brain.lua")
-print("  + startup.lua (computer)")
-print("  + "..myDrive.."/startup.lua (disk)")
+print("  + startup.lua = " .. MASTER_STARTUP)
 
 print("\nInstalling workers...")
 for i, drv in ipairs(workerDrives) do
