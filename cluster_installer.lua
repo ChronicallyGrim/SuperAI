@@ -1,13 +1,14 @@
--- cluster_installer.lua
--- Single installer: writes to all drives, reboots everything
-
-local PROTOCOL = "MODUS_CLUSTER"
+-- cluster_installer.lua v6
+-- Fixed: master disk gets master startup, not worker startup
 
 print("===== MODUS CLUSTER INSTALLER =====")
 print("")
 
--- Find all drives and computers
+-- Find master disk
 local myDrive = disk.getMountPath("back")
+print("Master disk: " .. (myDrive or "NONE"))
+
+-- Find worker drives and computers
 local workerDrives = {}
 local workerComputers = {}
 
@@ -23,85 +24,148 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
-print("Master disk: " .. (myDrive or "NONE"))
 print("Worker drives: " .. #workerDrives)
 print("Worker computers: " .. #workerComputers)
 print("")
 
+-- Find data files
+local dataFiles = {"word_vectors.lua", "knowledge_graph.lua", "conversation_memory.lua", "response_generator.lua"}
+local dataLoc = {}
+
+for _, df in ipairs(dataFiles) do
+    if fs.exists(df) then
+        dataLoc[df] = df
+    elseif myDrive and fs.exists(myDrive.."/"..df) then
+        dataLoc[df] = myDrive.."/"..df
+    else
+        print("WARNING: " .. df .. " not found!")
+    end
+end
+
 -- ============ FILE CONTENTS ============
 
-local WORKER_STARTUP = [[shell.run(disk.getMountPath("back").."/worker_main.lua")]]
+-- MASTER disk startup - runs master_brain
+local MASTER_DISK_STARTUP = [[shell.run("disk3/master_brain.lua")]]
+
+-- WORKER disk startup - runs worker_main
+local WORKER_DISK_STARTUP = [[
+local p = disk.getMountPath("back")
+if p and fs.exists(p.."/worker_main.lua") then
+    shell.run(p.."/worker_main.lua")
+else
+    print("No local worker_main.lua found!")
+    print("Disk path: " .. tostring(p))
+end
+]]
 
 local WORKER_MAIN = [[
 local PROTOCOL = "MODUS_CLUSTER"
-local diskPath = disk.getMountPath("back")
+local p = disk.getMountPath("back")
+local diskPath = p or ""
+
 for _, n in ipairs(peripheral.getNames()) do
     if peripheral.getType(n) == "modem" then rednet.open(n) end
 end
-print("Worker " .. os.getComputerID() .. " ready")
+
+term.clear()
+term.setCursorPos(1,1)
+print("Worker " .. os.getComputerID())
+print("Disk: " .. diskPath)
+print("Waiting for master...")
 
 local ROLE, roleModule
 while true do
     local sid, msg = rednet.receive(PROTOCOL, 2)
     if msg and msg.type == "assign_role" then
         ROLE = msg.role
-        local ok, m = pcall(dofile, diskPath.."/worker_"..ROLE..".lua")
-        roleModule = ok and m or nil
-        print("Role: " .. ROLE .. (roleModule and " OK" or " FAIL"))
+        local modPath = diskPath.."/worker_"..ROLE..".lua"
+        print("Loading: " .. modPath)
+        if fs.exists(modPath) then
+            local ok, m = pcall(dofile, modPath)
+            roleModule = ok and m or nil
+            if not ok then print("Error: "..tostring(m)) end
+        else
+            print("File not found!")
+        end
+        print("Role: " .. ROLE .. " = " .. (roleModule and "OK" or "FAIL"))
         rednet.send(sid, {type="role_ack", role=ROLE, ok=roleModule~=nil}, PROTOCOL)
     elseif msg and msg.type == "task" and roleModule then
         local fn = roleModule[msg.task]
-        local res = fn and fn(msg.data) or {error="unknown"}
-        rednet.send(sid, {type="result", taskId=msg.taskId, result=res}, PROTOCOL)
+        local ok, res = pcall(function() return fn and fn(msg.data) or {error="no func"} end)
+        rednet.send(sid, {type="result", taskId=msg.taskId, result=ok and res or {error=tostring(res)}}, PROTOCOL)
     elseif msg and msg.type == "shutdown" then break end
 end
 ]]
 
 local WORKER_LANGUAGE = [[
 local M = {}
-local v = dofile(disk.getMountPath("back").."/word_vectors.lua")
-if v and v.load then v.load() end
-function M.analyze(d) return {sentiment = v and v.getSentiment(d.text or "") or 0} end
+local p = disk.getMountPath("back")
+local path = p and p.."/word_vectors.lua" or nil
+local v
+if path and fs.exists(path) then
+    local ok, m = pcall(dofile, path)
+    if ok then v = m; if v.load then v.load() end; print("Vectors OK") 
+    else print("Vec err: "..tostring(m)) end
+else print("No vectors file: "..tostring(path)) end
+function M.analyze(d) return {sentiment = v and v.getSentiment and v.getSentiment(d.text or "") or 0} end
 return M
 ]]
 
 local WORKER_KNOWLEDGE = [[
 local M = {}
-local kg = dofile(disk.getMountPath("back").."/knowledge_graph.lua")
-function M.query(d) return {result = kg and kg.query(d.question or "") or nil} end
-function M.describe(d) return {description = kg and kg.describe(d.entity or "") or "?"} end
+local p = disk.getMountPath("back")
+local path = p and p.."/knowledge_graph.lua" or nil
+local kg
+if path and fs.exists(path) then
+    local ok, m = pcall(dofile, path)
+    if ok then kg = m; print("Knowledge OK") 
+    else print("KG err: "..tostring(m)) end
+else print("No knowledge file") end
+function M.query(d) return {result = kg and kg.query and kg.query(d.question or "") or nil} end
+function M.describe(d) return {description = kg and kg.describe and kg.describe(d.entity or "") or "?"} end
 return M
 ]]
 
 local WORKER_MEMORY = [[
 local M = {}
-local mem = dofile(disk.getMountPath("back").."/conversation_memory.lua")
-if mem and mem.init then mem.init() end
-function M.recordInteraction(d) if mem then pcall(mem.recordUserInteraction,d.name,d.message,d.sentiment,{}) end return {ok=true} end
-function M.getUser(d) return {user = mem and mem.getUser(d.name or "") or {}} end
+local p = disk.getMountPath("back")
+local path = p and p.."/conversation_memory.lua" or nil
+local mem
+if path and fs.exists(path) then
+    local ok, m = pcall(dofile, path)
+    if ok then mem = m; if mem.init then mem.init() end; print("Memory OK") 
+    else print("Mem err: "..tostring(m)) end
+else print("No memory file") end
+function M.recordInteraction(d) if mem and mem.recordUserInteraction then pcall(mem.recordUserInteraction,d.name,d.message,d.sentiment,{}) end return {ok=true} end
+function M.getUser(d) return {user = mem and mem.getUser and mem.getUser(d.name or "") or {}} end
 return M
 ]]
 
 local WORKER_RESPONSE = [[
 local M = {}
-local g = dofile(disk.getMountPath("back").."/response_generator.lua")
-function M.generateGreeting(d) return {response = g and g.generateGreeting(d.context or {}) or "Hello!"} end
-function M.generateStatus(d) return {response = g and g.generateStatusResponse(d.sentiment or 0) or "I see."} end
-function M.generateJoke(d) return {response = g and g.generateJoke(d.category) or "Why do programmers prefer dark mode? Light attracts bugs!"} end
-function M.generateFarewell(d) return {response = g and g.generateFarewell() or "Goodbye!"} end
-function M.generateThanks(d) return {response = g and g.generateThanks() or "You're welcome!"} end
-function M.generateAboutSelf(d) return {response = g and g.generateAboutSelf() or "I'm MODUS, a distributed AI!"} end
-function M.generateContextual(d) return {response = g and g.generateContextual(d.intent or "statement", {}) or "Interesting!"} end
+local p = disk.getMountPath("back")
+local path = p and p.."/response_generator.lua" or nil
+local g
+if path and fs.exists(path) then
+    local ok, m = pcall(dofile, path)
+    if ok then g = m; print("Response OK") 
+    else print("Resp err: "..tostring(m)) end
+else print("No response file") end
+function M.generateGreeting(d) return {response = g and g.generateGreeting and g.generateGreeting(d.context or {}) or "Hello!"} end
+function M.generateStatus(d) return {response = g and g.generateStatusResponse and g.generateStatusResponse(d.sentiment or 0) or "I see."} end
+function M.generateJoke(d) return {response = g and g.generateJoke and g.generateJoke(d.category) or "Why do programmers prefer dark mode? Light attracts bugs!"} end
+function M.generateFarewell(d) return {response = g and g.generateFarewell and g.generateFarewell() or "Goodbye!"} end
+function M.generateThanks(d) return {response = g and g.generateThanks and g.generateThanks() or "You're welcome!"} end
+function M.generateAboutSelf(d) return {response = g and g.generateAboutSelf and g.generateAboutSelf() or "I'm MODUS, a distributed AI!"} end
+function M.generateContextual(d) return {response = g and g.generateContextual and g.generateContextual(d.intent or "statement", {}) or "Interesting!"} end
 return M
 ]]
-
-local MASTER_STARTUP = [[shell.run(disk.getMountPath("back").."/master_brain.lua")]]
 
 local MASTER_BRAIN = [[
 local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","knowledge","memory","response"}
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
-print("=== MODUS v3 ===")
+print("=== MODUS v6 ===")
 local comps = {}
 for _, n in ipairs(peripheral.getNames()) do
     if peripheral.getType(n) == "computer" then
@@ -114,9 +178,9 @@ for i, c in ipairs(comps) do
     local role = roles[i]
     if role then
         peripheral.call(c.name, "turnOn")
-        sleep(0.3)
+        sleep(0.5)
         rednet.send(c.id, {type="assign_role", role=role}, PROTOCOL)
-        local deadline = os.clock() + 3
+        local deadline = os.clock() + 4
         while os.clock() < deadline do
             local sid, msg = rednet.receive(PROTOCOL, 0.5)
             if sid == c.id and msg and msg.type == "role_ack" then
@@ -189,15 +253,20 @@ for _,w in pairs(workers) do rednet.send(w.id,{type="shutdown"},PROTOCOL) end
 
 -- ============ INSTALL ============
 
-print("Installing to master disk...")
+print("Installing master...")
 local f = fs.open(myDrive.."/master_brain.lua", "w") f.write(MASTER_BRAIN) f.close()
-f = fs.open("/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
-print("  + master_brain.lua")
+print("  + "..myDrive.."/master_brain.lua")
 
-print("\nInstalling to worker drives...")
+-- MASTER disk gets MASTER startup
+f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_DISK_STARTUP) f.close()
+print("  + "..myDrive.."/startup.lua (MASTER)")
+
+print("\nInstalling workers...")
 for i, drv in ipairs(workerDrives) do
-    print("  " .. drv.name .. " (" .. drv.path .. ")")
-    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
+    print("  " .. drv.name .. " -> " .. drv.path)
+    
+    -- WORKER disk gets WORKER startup
+    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_DISK_STARTUP) f.close()
     f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
     f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
     f = fs.open(drv.path.."/worker_knowledge.lua", "w") f.write(WORKER_KNOWLEDGE) f.close()
@@ -205,8 +274,12 @@ for i, drv in ipairs(workerDrives) do
     f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
     
     -- Copy data files
-    for _, df in ipairs({"word_vectors.lua","knowledge_graph.lua","conversation_memory.lua","response_generator.lua"}) do
-        if fs.exists(df) then fs.copy(df, drv.path.."/"..df) end
+    for _, df in ipairs(dataFiles) do
+        local src = dataLoc[df]
+        if src then
+            fs.copy(src, drv.path.."/"..df)
+            print("    + " .. df)
+        end
     end
 end
 
