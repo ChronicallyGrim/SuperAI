@@ -1,5 +1,5 @@
--- cluster_installer.lua v6
--- Fixed: master disk gets master startup, not worker startup
+-- cluster_installer.lua v7
+-- Fixed: write startup.lua to master DISK not just computer root
 
 print("===== MODUS CLUSTER INSTALLER =====")
 print("")
@@ -44,18 +44,9 @@ end
 
 -- ============ FILE CONTENTS ============
 
--- MASTER disk startup - runs master_brain
-local MASTER_DISK_STARTUP = [[shell.run("disk3/master_brain.lua")]]
-
--- WORKER disk startup - runs worker_main
-local WORKER_DISK_STARTUP = [[
+local WORKER_STARTUP = [[
 local p = disk.getMountPath("back")
-if p and fs.exists(p.."/worker_main.lua") then
-    shell.run(p.."/worker_main.lua")
-else
-    print("No local worker_main.lua found!")
-    print("Disk path: " .. tostring(p))
-end
+if p then shell.run(p.."/worker_main.lua") end
 ]]
 
 local WORKER_MAIN = [[
@@ -161,11 +152,16 @@ function M.generateContextual(d) return {response = g and g.generateContextual a
 return M
 ]]
 
+local MASTER_STARTUP = [[
+local p = disk.getMountPath("back")
+if p then shell.run(p.."/master_brain.lua") end
+]]
+
 local MASTER_BRAIN = [[
 local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","knowledge","memory","response"}
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
-print("=== MODUS v6 ===")
+print("=== MODUS v7 ===")
 local comps = {}
 for _, n in ipairs(peripheral.getNames()) do
     if peripheral.getType(n) == "computer" then
@@ -255,18 +251,18 @@ for _,w in pairs(workers) do rednet.send(w.id,{type="shutdown"},PROTOCOL) end
 
 print("Installing master...")
 local f = fs.open(myDrive.."/master_brain.lua", "w") f.write(MASTER_BRAIN) f.close()
-print("  + "..myDrive.."/master_brain.lua")
-
--- MASTER disk gets MASTER startup
-f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_DISK_STARTUP) f.close()
-print("  + "..myDrive.."/startup.lua (MASTER)")
+-- Write startup to BOTH computer root AND disk (disk takes priority)
+f = fs.open("startup.lua", "w") f.write(MASTER_STARTUP) f.close()
+f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
+print("  + master_brain.lua")
+print("  + startup.lua (computer)")
+print("  + "..myDrive.."/startup.lua (disk)")
 
 print("\nInstalling workers...")
 for i, drv in ipairs(workerDrives) do
     print("  " .. drv.name .. " -> " .. drv.path)
     
-    -- WORKER disk gets WORKER startup
-    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_DISK_STARTUP) f.close()
+    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
     f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
     f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
     f = fs.open(drv.path.."/worker_knowledge.lua", "w") f.write(WORKER_KNOWLEDGE) f.close()
