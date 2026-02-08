@@ -12,18 +12,12 @@ M.PROTOCOL = "SUPERAI_CLUSTER"
 M.workers = {}
 M.masterID = os.getComputerID()
 
--- Define all AI roles (one per worker node)
+-- Define all AI roles (one per worker node, 4 workers)
 M.ROLES = {
-    "neural",           -- Neural network processing
-    "language",         -- Language understanding (tokenization, embeddings, word_vectors)
-    "learning",         -- Machine learning and training
-    "memory",           -- Conversation memory and search
-    "personality",      -- Personality and mood management
-    "generation",       -- Response generation and markov chains
-    "knowledge",        -- Knowledge graph and dictionary
-    "code",             -- Code generation
-    "context",          -- Context-aware processing
-    "advanced"          -- Advanced features (attention, RLHF, sampling)
+    "neural",       -- Worker 1: neural networks + language representation
+    "learning",     -- Worker 2: training + reinforcement learning
+    "memory",       -- Worker 3: memory + knowledge + context
+    "generation"    -- Worker 4: response generation + personality + mood
 }
 
 -- ============================================================================
@@ -31,17 +25,17 @@ M.ROLES = {
 -- ============================================================================
 
 M.MODULE_MAP = {
+    -- Worker 1: Neural networks + language representation
     neural = {
         "neural_net",
         "large_neural_net",
-        "neural_trainer"
-    },
-    language = {
+        "neural_trainer",
         "tokenization",
         "embeddings",
         "word_vectors",
         "attention"
     },
+    -- Worker 2: Training + reinforcement learning
     learning = {
         "machine_learning",
         "learning",
@@ -51,39 +45,31 @@ M.MODULE_MAP = {
         "exponential_trainer",
         "easy_trainer",
         "unified_trainer",
-        "training_diagnostic"
+        "training_diagnostic",
+        "rlhf",
+        "ai_vs_ai"
     },
+    -- Worker 3: Memory + knowledge + context
     memory = {
         "conversation_memory",
         "memory_search",
-        "memory_loader"
-    },
-    personality = {
-        "personality",
-        "mood",
+        "memory_loader",
+        "knowledge_graph",
+        "dictionary",
+        "context",
         "user_data"
     },
+    -- Worker 4: Response generation + personality + mood
     generation = {
         "response_generator",
         "responses",
         "markov",
         "context_markov",
-        "sampling"
-    },
-    knowledge = {
-        "knowledge_graph",
-        "dictionary"
-    },
-    code = {
+        "sampling",
+        "personality",
+        "mood",
+        "advanced",
         "code_generator"
-    },
-    context = {
-        "context"
-    },
-    advanced = {
-        "rlhf",
-        "ai_vs_ai",
-        "advanced"
     }
 }
 
@@ -232,11 +218,11 @@ end
 function M.processInput(input, userName)
     local results = {}
 
-    -- Language processing (parallel)
-    local languageResult = M.dispatch("language", "analyze", {text = input})
+    -- Language processing (via neural worker - has tokenization, embeddings, etc.)
+    local languageResult = M.dispatch("neural", "analyze", {text = input})
     results.language = languageResult
 
-    -- Get user context from memory
+    -- Get user context from memory worker (has conversation_memory, context, user_data)
     local userContext = M.dispatch("memory", "getUser", {name = userName})
     results.userContext = userContext
 
@@ -246,8 +232,8 @@ function M.processInput(input, userName)
     results.intent = intent
     results.sentiment = sentiment
 
-    -- Context processing
-    local contextData = M.dispatch("context", "process", {
+    -- Context processing (via memory worker - has context module)
+    local contextData = M.dispatch("memory", "process", {
         input = input,
         intent = intent,
         user = userName,
@@ -273,12 +259,12 @@ function M.generateResponse(input, userName, processingResults)
         local result = M.dispatch("generation", "generateFarewell", {})
         response = result and result.response
     elseif intent == "question" then
-        -- Try knowledge graph first
-        local knowledgeResult = M.dispatch("knowledge", "query", {question = input})
+        -- Try knowledge/memory worker first (has knowledge_graph)
+        local knowledgeResult = M.dispatch("memory", "query", {question = input})
         if knowledgeResult and knowledgeResult.answer then
             response = knowledgeResult.answer
         else
-            -- Fall back to contextual generation
+            -- Fall back to generation worker
             local result = M.dispatch("generation", "generateContextual", {
                 intent = "question",
                 context = context,
@@ -287,7 +273,8 @@ function M.generateResponse(input, userName, processingResults)
             response = result and result.response
         end
     elseif intent == "code_request" then
-        local result = M.dispatch("code", "generate", {
+        -- code_generator is in generation worker
+        local result = M.dispatch("generation", "generate_code", {
             request = input,
             context = context
         })
@@ -296,7 +283,7 @@ function M.generateResponse(input, userName, processingResults)
         local result = M.dispatch("generation", "generateJoke", {})
         response = result and result.response
     else
-        -- Default contextual response
+        -- Default contextual response via generation worker
         local result = M.dispatch("generation", "generateContextual", {
             intent = intent,
             context = context,
@@ -306,7 +293,7 @@ function M.generateResponse(input, userName, processingResults)
         response = result and result.response
     end
 
-    -- Record interaction in memory
+    -- Record interaction in memory worker (has conversation_memory)
     M.dispatch("memory", "record", {
         user = userName,
         input = input,
@@ -315,8 +302,8 @@ function M.generateResponse(input, userName, processingResults)
         intent = intent
     })
 
-    -- Update personality based on interaction
-    M.dispatch("personality", "update", {
+    -- Update personality via generation worker (has personality, mood)
+    M.dispatch("generation", "update_personality", {
         sentiment = sentiment,
         intent = intent
     })
@@ -327,20 +314,18 @@ end
 function M.learn(input, feedback)
     -- Distribute learning across relevant workers
 
-    -- Neural learning
+    -- Neural learning (worker 1)
     M.dispatch("neural", "train", {
         input = input,
         feedback = feedback
     })
 
-    -- Machine learning pattern recognition
+    -- Machine learning + RLHF (worker 2 has both)
     M.dispatch("learning", "update", {
         data = input,
         feedback = feedback
     })
-
-    -- RLHF feedback learning
-    M.dispatch("advanced", "rlhf_feedback", {
+    M.dispatch("learning", "rlhf_feedback", {
         input = input,
         feedback = feedback
     })
