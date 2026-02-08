@@ -103,12 +103,14 @@ function M.init()
         end
     end
 
-    -- Discover worker computers
+    -- Discover worker computers (exclude master itself)
     local computers = {}
     for _, name in ipairs(peripheral.getNames()) do
         if peripheral.getType(name) == "computer" then
             local id = peripheral.call(name, "getID")
-            table.insert(computers, {name = name, id = id})
+            if id ~= M.masterID then
+                table.insert(computers, {name = name, id = id})
+            end
         end
     end
 

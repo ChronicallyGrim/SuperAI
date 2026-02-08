@@ -25,6 +25,7 @@ end
 local workerDrives = {}
 local workerComputers = {}
 
+local masterID = os.getComputerID()
 for _, name in ipairs(peripheral.getNames()) do
     local pType = peripheral.getType(name)
     if pType == "drive" and name ~= "back" then
@@ -33,7 +34,10 @@ for _, name in ipairs(peripheral.getNames()) do
             table.insert(workerDrives, {name = name, path = path})
         end
     elseif pType == "computer" then
-        table.insert(workerComputers, {name = name, id = peripheral.call(name, "getID")})
+        local cid = peripheral.call(name, "getID")
+        if cid ~= masterID then
+            table.insert(workerComputers, {name = name, id = cid})
+        end
     end
 end
 

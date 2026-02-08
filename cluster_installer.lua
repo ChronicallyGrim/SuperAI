@@ -14,6 +14,7 @@ print("Master disk: " .. (myDrive or "NONE"))
 local workerDrives = {}
 local workerComputers = {}
 
+local myID = os.getComputerID()
 for _, name in ipairs(peripheral.getNames()) do
     local pType = peripheral.getType(name)
     if pType == "drive" and name ~= "back" then
@@ -22,7 +23,10 @@ for _, name in ipairs(peripheral.getNames()) do
             table.insert(workerDrives, {name = name, path = path})
         end
     elseif pType == "computer" then
-        table.insert(workerComputers, {name = name, id = peripheral.call(name, "getID")})
+        local cid = peripheral.call(name, "getID")
+        if cid ~= myID then
+            table.insert(workerComputers, {name = name, id = cid})
+        end
     end
 end
 
@@ -231,9 +235,13 @@ local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","knowledge","m
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
 print("=== MODUS v11 ===")
+local myMasterID = os.getComputerID()
 local comps = {}
 for _, n in ipairs(peripheral.getNames()) do
-    if peripheral.getType(n) == "computer" then table.insert(comps, {name=n, id=peripheral.call(n,"getID")}) end
+    if peripheral.getType(n) == "computer" then
+        local cid = peripheral.call(n,"getID")
+        if cid ~= myMasterID then table.insert(comps, {name=n, id=cid}) end
+    end
 end
 
 print("Assigning roles...")
