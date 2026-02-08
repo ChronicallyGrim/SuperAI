@@ -86,51 +86,88 @@ print("Worker computers: " .. #workerComputers)
 print("")
 
 -- ============================================================================
--- MODULE LIST - ALL 40+ SUPERAI MODULES
+-- MODULE LIST - DIVIDED INTO 4 WORKER CATEGORIES
 -- ============================================================================
 
-local ALL_MODULES = {
-    -- Core modules (always needed)
+-- Core files needed on master disk
+local MASTER_MODULES = {
     "superai_cluster.lua",
-    "cluster_worker.lua",
-    "utils.lua",
-
-    -- AI modules (distributed to workers)
-    "neural_net.lua",
-    "large_neural_net.lua",
-    "neural_trainer.lua",
-    "tokenization.lua",
-    "embeddings.lua",
-    "word_vectors.lua",
-    "attention.lua",
-    "machine_learning.lua",
-    "learning.lua",
-    "autonomous_learning.lua",
-    "auto_trainer.lua",
-    "advanced_ai_trainer.lua",
-    "exponential_trainer.lua",
-    "easy_trainer.lua",
-    "unified_trainer.lua",
-    "training_diagnostic.lua",
-    "conversation_memory.lua",
-    "memory_search.lua",
-    "memory_loader.lua",
-    "personality.lua",
-    "mood.lua",
-    "user_data.lua",
-    "response_generator.lua",
-    "responses.lua",
-    "markov.lua",
-    "context_markov.lua",
-    "sampling.lua",
-    "knowledge_graph.lua",
-    "dictionary.lua",
-    "code_generator.lua",
-    "context.lua",
-    "rlhf.lua",
-    "ai_vs_ai.lua",
-    "advanced.lua"
+    "utils.lua"
 }
+
+-- Core files needed on EVERY worker disk
+local WORKER_CORE = {
+    "cluster_worker.lua",
+    "utils.lua"
+}
+
+-- Modules per worker role (4 workers, 4 categories)
+local WORKER_MODULES = {
+    -- Worker 1: Neural - neural networks and language representation
+    neural = {
+        "neural_net.lua",
+        "large_neural_net.lua",
+        "neural_trainer.lua",
+        "tokenization.lua",
+        "embeddings.lua",
+        "word_vectors.lua",
+        "attention.lua"
+    },
+    -- Worker 2: Learning - training and reinforcement learning
+    learning = {
+        "machine_learning.lua",
+        "learning.lua",
+        "autonomous_learning.lua",
+        "auto_trainer.lua",
+        "advanced_ai_trainer.lua",
+        "exponential_trainer.lua",
+        "easy_trainer.lua",
+        "unified_trainer.lua",
+        "training_diagnostic.lua",
+        "rlhf.lua",
+        "ai_vs_ai.lua"
+    },
+    -- Worker 3: Memory - memory, knowledge and context
+    memory = {
+        "conversation_memory.lua",
+        "memory_search.lua",
+        "memory_loader.lua",
+        "knowledge_graph.lua",
+        "dictionary.lua",
+        "context.lua",
+        "user_data.lua"
+    },
+    -- Worker 4: Generation - response generation, personality and mood
+    generation = {
+        "response_generator.lua",
+        "responses.lua",
+        "markov.lua",
+        "context_markov.lua",
+        "sampling.lua",
+        "personality.lua",
+        "mood.lua",
+        "advanced.lua",
+        "code_generator.lua"
+    }
+}
+
+-- Ordered role list (worker index -> role name)
+local WORKER_ROLES = {"neural", "learning", "memory", "generation"}
+
+-- Flatten all unique modules for download purposes
+local ALL_MODULES = {}
+local _seen = {}
+for _, m in ipairs(MASTER_MODULES) do
+    if not _seen[m] then _seen[m] = true; table.insert(ALL_MODULES, m) end
+end
+for _, m in ipairs(WORKER_CORE) do
+    if not _seen[m] then _seen[m] = true; table.insert(ALL_MODULES, m) end
+end
+for _, mods in pairs(WORKER_MODULES) do
+    for _, m in ipairs(mods) do
+        if not _seen[m] then _seen[m] = true; table.insert(ALL_MODULES, m) end
+    end
+end
 
 -- ============================================================================
 -- CHECK/DOWNLOAD MODULES
@@ -343,36 +380,50 @@ print("")
 -- ============================================================================
 
 print("Installing worker computers...")
+print("(Each worker only gets modules for its assigned role)")
+print("")
 
 for i, drive in ipairs(workerDrives) do
-    write("  Worker " .. i .. " (disk at " .. drive.path .. " via " .. drive.name .. "): ")
+    local role = WORKER_ROLES[i]
+    if not role then
+        print("  Worker " .. i .. ": No role assigned (only 4 roles defined). Skipping.")
+    else
+        write("  Worker " .. i .. " [" .. role:upper() .. "] (disk at " .. drive.path .. " via " .. drive.name .. "): ")
 
-    -- Write universal startup to disk (auto-detects role)
-    local file = fs.open(drive.path .. "/startup.lua", "w")
-    file.write(UNIVERSAL_STARTUP)
-    file.close()
+        -- Write universal startup to disk (auto-detects role)
+        local file = fs.open(drive.path .. "/startup.lua", "w")
+        file.write(UNIVERSAL_STARTUP)
+        file.close()
 
-    -- Copy ALL modules to each worker disk
-    local copiedCount = 0
-    for _, module in ipairs(ALL_MODULES) do
-        local source = nil
-        if fs.exists(masterDisk .. "/" .. module) then
-            source = masterDisk .. "/" .. module
-        elseif fs.exists(module) then
-            source = module
-        end
+        -- Write worker role config so this disk knows its role
+        file = fs.open(drive.path .. "/worker_role.txt", "w")
+        file.write(role)
+        file.close()
 
-        if source then
-            local dest = drive.path .. "/" .. module
-            if fs.exists(dest) then
-                fs.delete(dest)
+        -- Copy core worker files + role-specific modules only
+        local copiedCount = 0
+        local modulesToCopy = {}
+        for _, m in ipairs(WORKER_CORE) do table.insert(modulesToCopy, m) end
+        for _, m in ipairs(WORKER_MODULES[role]) do table.insert(modulesToCopy, m) end
+
+        for _, module in ipairs(modulesToCopy) do
+            local source = nil
+            if fs.exists(masterDisk .. "/" .. module) then
+                source = masterDisk .. "/" .. module
+            elseif fs.exists(module) then
+                source = module
             end
-            fs.copy(source, dest)
-            copiedCount = copiedCount + 1
-        end
-    end
 
-    print(copiedCount .. " modules copied")
+            if source then
+                local dest = drive.path .. "/" .. module
+                if fs.exists(dest) then fs.delete(dest) end
+                fs.copy(source, dest)
+                copiedCount = copiedCount + 1
+            end
+        end
+
+        print(copiedCount .. " modules copied (" .. #WORKER_MODULES[role] .. " role modules + " .. #WORKER_CORE .. " core)")
+    end
 end
 
 -- ============================================================================
@@ -420,17 +471,17 @@ print("Worker Drives: " .. #workerDrives)
 print("Worker Computers: " .. #workerComputers)
 print("Total Modules: " .. (existingCount + downloadedCount))
 print("")
-print("AI Roles:")
-print("  - Neural: Neural networks and deep learning")
-print("  - Language: Tokenization, embeddings, word vectors")
-print("  - Learning: Machine learning and training systems")
-print("  - Memory: Conversation memory and search")
-print("  - Personality: Personality and mood management")
-print("  - Generation: Response and text generation")
-print("  - Knowledge: Knowledge graph and dictionary")
-print("  - Code: Code generation")
-print("  - Context: Context-aware processing")
-print("  - Advanced: RLHF, attention, sampling")
+print("Worker Roles (4 workers):")
+print("  Worker 1 [NEURAL]:     neural_net, large_neural_net, neural_trainer,")
+print("                         tokenization, embeddings, word_vectors, attention")
+print("  Worker 2 [LEARNING]:   machine_learning, learning, autonomous_learning,")
+print("                         auto_trainer, advanced_ai_trainer, exponential_trainer,")
+print("                         easy_trainer, unified_trainer, training_diagnostic,")
+print("                         rlhf, ai_vs_ai")
+print("  Worker 3 [MEMORY]:     conversation_memory, memory_search, memory_loader,")
+print("                         knowledge_graph, dictionary, context, user_data")
+print("  Worker 4 [GENERATION]: response_generator, responses, markov, context_markov,")
+print("                         sampling, personality, mood, advanced, code_generator")
 print("")
 print("WORKER SETUP REQUIRED (one-time per worker):")
 print("  If workers are failing, go to each worker computer and run:")
