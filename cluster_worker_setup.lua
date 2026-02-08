@@ -43,38 +43,60 @@ end
 print("Found disk: " .. diskPath .. " (via " .. diskPeripheral .. ")")
 print("")
 
--- Write startup.lua to computer root
+-- Write universal startup to computer root (same logic as master uses)
 local STARTUP = [[
--- Worker startup
-local function findDisk()
-    -- Check all sides
+-- SuperAI Universal Startup
+-- Auto-detects master vs worker role
+
+local function findDiskWithFile(filename)
+    -- Check all sides first
     local sides = {"back","front","left","right","top","bottom"}
     for _, side in ipairs(sides) do
         if peripheral.getType(side) == "drive" then
             local p = disk.getMountPath(side)
-            if p and fs.exists(p.."/cluster_worker.lua") then return p, side end
+            if p and fs.exists(p.."/"..filename) then return p, side end
         end
     end
-    -- Check wired network peripheral drives
+    -- Check wired network peripheral drives (e.g. drive_0, drive_1, disk_3, etc.)
     for _, name in ipairs(peripheral.getNames()) do
         if peripheral.getType(name) == "drive" then
             local p = disk.getMountPath(name)
-            if p and fs.exists(p.."/cluster_worker.lua") then return p, name end
+            if p and fs.exists(p.."/"..filename) then return p, name end
         end
     end
     return nil, nil
 end
 
-local diskPath, diskPeripheral = findDisk()
-if diskPath then
-    print("Worker disk: " .. diskPath .. " (via " .. tostring(diskPeripheral) .. ")")
+-- Determine role by searching ALL disk locations for the master marker file
+-- Master = disk contains superai_cluster.lua
+-- Worker = disk contains cluster_worker.lua (but NOT superai_cluster.lua)
+local diskPath, diskName = findDiskWithFile("superai_cluster.lua")
+local isMaster = diskPath ~= nil
+
+if isMaster then
+    print("Role: MASTER (disk on " .. tostring(diskName) .. ")")
     if package and package.path then
         package.path = package.path .. ";" .. diskPath .. "/?.lua"
     end
-    shell.run(diskPath .. "/cluster_worker.lua")
+    local cluster = dofile(diskPath .. "/superai_cluster.lua")
+    if cluster and cluster.run then
+        cluster.run()
+    else
+        print("ERROR: Could not load superai_cluster.lua")
+    end
 else
-    print("ERROR: cluster_worker.lua not found on any disk!")
-    print("Make sure worker disk with AI modules is attached.")
+    -- Worker role: find cluster_worker.lua on any disk
+    diskPath, diskName = findDiskWithFile("cluster_worker.lua")
+    if diskPath then
+        print("Role: WORKER (disk on " .. tostring(diskName) .. ")")
+        if package and package.path then
+            package.path = package.path .. ";" .. diskPath .. "/?.lua"
+        end
+        shell.run(diskPath .. "/cluster_worker.lua")
+    else
+        print("ERROR: No disk found with cluster_worker.lua!")
+        print("Make sure a disk with AI modules is attached.")
+    end
 end
 ]]
 
