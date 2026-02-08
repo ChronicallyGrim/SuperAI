@@ -105,6 +105,32 @@ local taskHandlers = {
                 return success and {prediction = result} or {error = tostring(result)}
             end
             return {error = "No neural module"}
+        end,
+        analyze = function(data)
+            local result = {}
+
+            -- Tokenization
+            local tokenizer = loadedModules["tokenization"]
+            if tokenizer and tokenizer.tokenize then
+                local success, tokens = pcall(tokenizer.tokenize, data.text or "")
+                if success then result.tokens = tokens end
+            end
+
+            -- Embeddings
+            local emb = loadedModules["embeddings"]
+            if emb and emb.getEmbedding then
+                local success, embedding = pcall(emb.getEmbedding, data.text or "")
+                if success then result.embedding = embedding end
+            end
+
+            -- Word vectors (sentiment)
+            local wv = loadedModules["word_vectors"]
+            if wv and wv.getSentiment then
+                local success, sentiment = pcall(wv.getSentiment, data.text or "")
+                if success then result.sentiment = sentiment end
+            end
+
+            return result
         end
     },
 
@@ -159,6 +185,14 @@ local taskHandlers = {
                 return {ok = pcall(al.learn, data)}
             end
             return {ok = false}
+        end,
+        rlhf_feedback = function(data)
+            local rlhf = loadedModules["rlhf"]
+            if rlhf and rlhf.addFeedback then
+                pcall(rlhf.addFeedback, data.input, data.feedback)
+                return {ok = true}
+            end
+            return {ok = false}
         end
     },
 
@@ -181,7 +215,29 @@ local taskHandlers = {
                 local success, user = pcall(mem.getUser, data.name or "User")
                 return success and {user = user} or {user = {}}
             end
+            -- Try user_data module as fallback
+            local ud = loadedModules["user_data"]
+            if ud and ud.getUser then
+                local success, user = pcall(ud.getUser, data.name or "User")
+                return success and {user = user} or {user = {}}
+            end
             return {user = {}}
+        end,
+        process = function(data)
+            local ctx = loadedModules["context"]
+            if ctx and ctx.analyze then
+                local success, result = pcall(ctx.analyze, data.input, data.history)
+                return success and result or {}
+            end
+            return {}
+        end,
+        query = function(data)
+            local kg = loadedModules["knowledge_graph"]
+            if kg and kg.query then
+                local success, result = pcall(kg.query, data.question)
+                return success and {answer = result} or {answer = nil}
+            end
+            return {answer = nil}
         end,
         search = function(data)
             local ms = loadedModules["memory_search"]
@@ -245,29 +301,31 @@ local taskHandlers = {
             return {response = "Goodbye!"}
         end,
         generateContextual = function(data)
-            -- Try context-aware markov first
-            local cm = loadedModules["context_markov"]
-            if cm and cm.generate then
-                local success, resp = pcall(cm.generate, data.input, data.context)
-                if success and resp then
-                    return {response = resp}
-                end
-            end
-
-            -- Fall back to regular markov
-            local markov = loadedModules["markov"]
-            if markov and markov.generate then
-                local success, resp = pcall(markov.generate, data.input)
-                if success and resp then
-                    return {response = resp}
-                end
-            end
-
-            -- Fall back to response generator
+            -- Try response_generator first (always has template responses)
             local gen = loadedModules["response_generator"]
             if gen and gen.generateContextual then
                 local success, resp = pcall(gen.generateContextual, data.intent, data.context)
-                return success and {response = resp} or {response = "Interesting!"}
+                if success and resp and resp ~= "" then
+                    return {response = resp}
+                end
+            end
+
+            -- Try context-aware markov (only useful after training)
+            local cm = loadedModules["context_markov"]
+            if cm and cm.generate then
+                local success, resp = pcall(cm.generate, data.input, data.context)
+                if success and resp and not resp:match("training data") then
+                    return {response = resp}
+                end
+            end
+
+            -- Try regular markov (only useful after training)
+            local markov = loadedModules["markov"]
+            if markov and markov.generate then
+                local success, resp = pcall(markov.generate, data.input)
+                if success and resp and not resp:match("training data") then
+                    return {response = resp}
+                end
             end
 
             return {response = "I understand."}
@@ -279,6 +337,25 @@ local taskHandlers = {
                 return success and {response = resp} or {response = "Why did the AI cross the road? To optimize its path!"}
             end
             return {response = "Why did the AI cross the road? To optimize its path!"}
+        end,
+        generate_code = function(data)
+            local cg = loadedModules["code_generator"]
+            if cg and cg.generate then
+                local success, code = pcall(cg.generate, data.request, data.context)
+                return success and {code = code} or {code = "-- Unable to generate code"}
+            end
+            return {code = "-- Code generation not available"}
+        end,
+        update_personality = function(data)
+            local pers = loadedModules["personality"]
+            if pers and pers.updateMood then
+                pcall(pers.updateMood, data.sentiment or 0)
+            end
+            local mood = loadedModules["mood"]
+            if mood and mood.update then
+                pcall(mood.update, data.sentiment or 0, data.intent or "")
+            end
+            return {ok = true}
         end
     },
 
