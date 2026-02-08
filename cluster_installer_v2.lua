@@ -381,46 +381,27 @@ end
 
 if #workerComputers > 0 then
     print("")
-    print("Setting up worker computer startups via rednet...")
+    print("Worker computers found: " .. #workerComputers)
+    print("IMPORTANT: Workers need startup.lua on their computer root.")
+    print("The installer cannot write directly to remote computer roots.")
+    print("")
+    print("Each worker disk already has startup.lua (UNIVERSAL_STARTUP) on it.")
+    print("You have two options for each worker computer:")
+    print("  Option A: Go to each worker and run:")
+    print("    shell.run('/disk/cluster_worker_setup.lua')")
+    print("  Option B: Workers with startup.lua already on root will auto-connect.")
+    print("")
 
-    -- Open modems
-    local modemOpened = false
+    -- Try to turn on workers anyway so they can start if already set up
     for _, name in ipairs(peripheral.getNames()) do
         if peripheral.getType(name) == "modem" then
             rednet.open(name)
-            modemOpened = true
         end
     end
 
-    if modemOpened then
-        -- Turn on each worker and send them the worker startup script
-        for i, comp in ipairs(workerComputers) do
-            write("  Worker computer " .. comp.id .. ": ")
-            peripheral.call(comp.name, "turnOn")
-            sleep(1)
-
-            -- Send the universal startup script for them to install
-            rednet.send(comp.id, {
-                type = "install_startup",
-                content = UNIVERSAL_STARTUP
-            }, "SUPERAI_INSTALL")
-
-            -- Wait for acknowledgment
-            local deadline = os.clock() + 5
-            local acked = false
-            while os.clock() < deadline do
-                local sid, msg = rednet.receive("SUPERAI_INSTALL", 0.5)
-                if sid == comp.id and msg and msg.type == "startup_ack" then
-                    acked = true
-                    break
-                end
-            end
-
-            print(acked and "startup installed" or "timeout (manual setup needed)")
-        end
-    else
-        print("  No modems found - worker computers need manual startup setup")
-        print("  Copy 'startup.lua' (worker version) to each worker computer root")
+    for i, comp in ipairs(workerComputers) do
+        print("  Turning on worker " .. comp.id .. "...")
+        peripheral.call(comp.name, "turnOn")
     end
 end
 
@@ -451,9 +432,11 @@ print("  - Code: Code generation")
 print("  - Context: Context-aware processing")
 print("  - Advanced: RLHF, attention, sampling")
 print("")
-print("NOTE: If worker computers show 'startup.lua timeout',")
-print("manually run on each worker: shell.run(disk_path..'/cluster_worker.lua')")
-print("Then run cluster_worker_setup.lua on each worker to install startup.")
+print("WORKER SETUP REQUIRED (one-time per worker):")
+print("  If workers are failing, go to each worker computer and run:")
+print("  > shell.run('/disk/cluster_worker_setup.lua')")
+print("  This installs startup.lua to the worker's root so it auto-starts.")
+print("  After running once, workers will auto-connect on every reboot.")
 print("")
 
 -- ============================================================================
