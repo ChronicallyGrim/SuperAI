@@ -182,14 +182,14 @@ print("")
 -- ============================================================================
 
 -- Universal startup: auto-detects whether this computer is master or worker
--- Master = has superai_cluster.lua on the disk attached to "back" side (or any side)
+-- Master = has superai_cluster.lua on ANY attached disk (any side or wired modem)
 -- Worker = all other computers
 local UNIVERSAL_STARTUP = [[
 -- SuperAI Universal Startup
 -- Auto-detects master vs worker role
 
 local function findDiskWithFile(filename)
-    -- Check sides first
+    -- Check all sides first
     local sides = {"back","front","left","right","top","bottom"}
     for _, side in ipairs(sides) do
         if peripheral.getType(side) == "drive" then
@@ -197,7 +197,7 @@ local function findDiskWithFile(filename)
             if p and fs.exists(p.."/"..filename) then return p, side end
         end
     end
-    -- Check wired network peripheral drives
+    -- Check wired network peripheral drives (e.g. drive_0, drive_1, disk_3, etc.)
     for _, name in ipairs(peripheral.getNames()) do
         if peripheral.getType(name) == "drive" then
             local p = disk.getMountPath(name)
@@ -207,24 +207,14 @@ local function findDiskWithFile(filename)
     return nil, nil
 end
 
--- Determine role: master has superai_cluster.lua on back disk
--- Worker has cluster_worker.lua on any disk
-local isMaster = false
-local diskPath = nil
-local diskName = nil
-
--- Check if this is master: disk on "back" with superai_cluster.lua
-if peripheral.getType("back") == "drive" then
-    local p = disk.getMountPath("back")
-    if p and fs.exists(p.."/superai_cluster.lua") then
-        isMaster = true
-        diskPath = p
-        diskName = "back"
-    end
-end
+-- Determine role by searching ALL disk locations for the master marker file
+-- Master = disk contains superai_cluster.lua
+-- Worker = disk contains cluster_worker.lua (but NOT superai_cluster.lua)
+local diskPath, diskName = findDiskWithFile("superai_cluster.lua")
+local isMaster = diskPath ~= nil
 
 if isMaster then
-    print("Role: MASTER (disk on " .. diskName .. ")")
+    print("Role: MASTER (disk on " .. tostring(diskName) .. ")")
     if package and package.path then
         package.path = package.path .. ";" .. diskPath .. "/?.lua"
     end
@@ -334,18 +324,13 @@ end
 
 print("Installing master computer...")
 
--- Write master startup to computer root
+-- Write universal startup to computer root (detects master/worker role automatically)
 local file = fs.open("startup.lua", "w")
-file.write(MASTER_STARTUP)
+file.write(UNIVERSAL_STARTUP)
 file.close()
 
--- Copy master startup to disk too (backup)
+-- Copy universal startup to disk too (backup/auto-startup for CC disk feature)
 file = fs.open(masterDisk .. "/startup.lua", "w")
-file.write(MASTER_STARTUP)
-file.close()
-
--- Also write universal startup as fallback
-file = fs.open(masterDisk .. "/universal_startup.lua", "w")
 file.write(UNIVERSAL_STARTUP)
 file.close()
 
@@ -362,9 +347,9 @@ print("Installing worker computers...")
 for i, drive in ipairs(workerDrives) do
     write("  Worker " .. i .. " (disk at " .. drive.path .. " via " .. drive.name .. "): ")
 
-    -- Write worker startup to disk
+    -- Write universal startup to disk (auto-detects role)
     local file = fs.open(drive.path .. "/startup.lua", "w")
-    file.write(WORKER_STARTUP)
+    file.write(UNIVERSAL_STARTUP)
     file.close()
 
     -- Copy ALL modules to each worker disk
@@ -414,10 +399,10 @@ if #workerComputers > 0 then
             peripheral.call(comp.name, "turnOn")
             sleep(1)
 
-            -- Send the worker startup script for them to install
+            -- Send the universal startup script for them to install
             rednet.send(comp.id, {
                 type = "install_startup",
-                content = WORKER_STARTUP
+                content = UNIVERSAL_STARTUP
             }, "SUPERAI_INSTALL")
 
             -- Wait for acknowledgment
