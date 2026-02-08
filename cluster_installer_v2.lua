@@ -11,13 +11,53 @@ print("")
 -- DISCOVER CLUSTER HARDWARE
 -- ============================================================================
 
--- Find master disk (back side)
-local masterDisk = disk.getMountPath("back")
-print("Master disk: " .. (masterDisk or "NONE"))
+-- Find master disk - check back side first, then all other sides and peripherals
+local masterDiskPeripheral = nil
+local masterDisk = nil
+
+-- Check back side first (preferred location)
+if peripheral.getType("back") == "drive" then
+    local p = disk.getMountPath("back")
+    if p then
+        masterDiskPeripheral = "back"
+        masterDisk = p
+    end
+end
+
+-- If not on back, search all sides and peripheral names
+if not masterDisk then
+    local sides = {"front", "left", "right", "top", "bottom"}
+    for _, side in ipairs(sides) do
+        if peripheral.getType(side) == "drive" then
+            local p = disk.getMountPath(side)
+            if p then
+                masterDiskPeripheral = side
+                masterDisk = p
+                break
+            end
+        end
+    end
+end
+
+-- If still not found, check wired network peripherals
+if not masterDisk then
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "drive" then
+            local p = disk.getMountPath(name)
+            if p then
+                masterDiskPeripheral = name
+                masterDisk = p
+                break
+            end
+        end
+    end
+end
+
+print("Master disk: " .. (masterDisk and (masterDisk .. " (via " .. masterDiskPeripheral .. ")") or "NONE"))
 
 if not masterDisk then
-    print("ERROR: No master disk found on 'back' side!")
-    print("Please attach a disk to the back of the master computer.")
+    print("ERROR: No disk found!")
+    print("Please attach a disk drive to the master computer.")
     return
 end
 
@@ -28,7 +68,7 @@ local workerComputers = {}
 local masterID = os.getComputerID()
 for _, name in ipairs(peripheral.getNames()) do
     local pType = peripheral.getType(name)
-    if pType == "drive" and name ~= "back" then
+    if pType == "drive" and name ~= masterDiskPeripheral then
         local path = disk.getMountPath(name)
         if path then
             table.insert(workerDrives, {name = name, path = path})
@@ -141,25 +181,53 @@ print("")
 -- STARTUP SCRIPTS
 -- ============================================================================
 
-local MASTER_STARTUP = [[
--- Master startup
-local function findDisk()
+-- Universal startup: auto-detects whether this computer is master or worker
+-- Master = has superai_cluster.lua on the disk attached to "back" side (or any side)
+-- Worker = all other computers
+local UNIVERSAL_STARTUP = [[
+-- SuperAI Universal Startup
+-- Auto-detects master vs worker role
+
+local function findDiskWithFile(filename)
+    -- Check sides first
+    local sides = {"back","front","left","right","top","bottom"}
+    for _, side in ipairs(sides) do
+        if peripheral.getType(side) == "drive" then
+            local p = disk.getMountPath(side)
+            if p and fs.exists(p.."/"..filename) then return p, side end
+        end
+    end
+    -- Check wired network peripheral drives
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "drive" then
+            local p = disk.getMountPath(name)
+            if p and fs.exists(p.."/"..filename) then return p, name end
+        end
+    end
+    return nil, nil
+end
+
+-- Determine role: master has superai_cluster.lua on back disk
+-- Worker has cluster_worker.lua on any disk
+local isMaster = false
+local diskPath = nil
+local diskName = nil
+
+-- Check if this is master: disk on "back" with superai_cluster.lua
+if peripheral.getType("back") == "drive" then
     local p = disk.getMountPath("back")
-    if p and fs.exists(p.."/superai_cluster.lua") then return p end
-    for i = 1, 10 do
-        local try = "disk" .. (i > 1 and i or "")
-        if fs.exists(try.."/superai_cluster.lua") then return try end
+    if p and fs.exists(p.."/superai_cluster.lua") then
+        isMaster = true
+        diskPath = p
+        diskName = "back"
     end
 end
 
-local diskPath = findDisk()
-if diskPath then
-    -- Add disk to package path
+if isMaster then
+    print("Role: MASTER (disk on " .. diskName .. ")")
     if package and package.path then
         package.path = package.path .. ";" .. diskPath .. "/?.lua"
     end
-
-    -- Load and run cluster orchestrator
     local cluster = dofile(diskPath .. "/superai_cluster.lua")
     if cluster and cluster.run then
         cluster.run()
@@ -167,33 +235,96 @@ if diskPath then
         print("ERROR: Could not load superai_cluster.lua")
     end
 else
-    print("ERROR: superai_cluster.lua not found!")
+    -- Worker role: find cluster_worker.lua on any disk
+    diskPath, diskName = findDiskWithFile("cluster_worker.lua")
+    if diskPath then
+        print("Role: WORKER (disk on " .. tostring(diskName) .. ")")
+        if package and package.path then
+            package.path = package.path .. ";" .. diskPath .. "/?.lua"
+        end
+        shell.run(diskPath .. "/cluster_worker.lua")
+    else
+        print("ERROR: No disk found with cluster_worker.lua!")
+        print("Make sure a disk with AI modules is attached.")
+    end
+end
+]]
+
+local MASTER_STARTUP = [[
+-- Master startup
+local function findDisk()
+    -- Check back side first (preferred)
+    if peripheral.getType("back") == "drive" then
+        local p = disk.getMountPath("back")
+        if p and fs.exists(p.."/superai_cluster.lua") then return p, "back" end
+    end
+    -- Check all sides
+    local sides = {"front","left","right","top","bottom"}
+    for _, side in ipairs(sides) do
+        if peripheral.getType(side) == "drive" then
+            local p = disk.getMountPath(side)
+            if p and fs.exists(p.."/superai_cluster.lua") then return p, side end
+        end
+    end
+    -- Check wired peripheral drives
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "drive" then
+            local p = disk.getMountPath(name)
+            if p and fs.exists(p.."/superai_cluster.lua") then return p, name end
+        end
+    end
+    return nil, nil
+end
+
+local diskPath, diskPeripheral = findDisk()
+if diskPath then
+    print("Master disk: " .. diskPath .. " (via " .. diskPeripheral .. ")")
+    if package and package.path then
+        package.path = package.path .. ";" .. diskPath .. "/?.lua"
+    end
+    local cluster = dofile(diskPath .. "/superai_cluster.lua")
+    if cluster and cluster.run then
+        cluster.run()
+    else
+        print("ERROR: Could not load superai_cluster.lua")
+    end
+else
+    print("ERROR: superai_cluster.lua not found on any disk!")
+    print("Make sure master disk is attached.")
 end
 ]]
 
 local WORKER_STARTUP = [[
 -- Worker startup
 local function findDisk()
+    -- Check all sides
     local sides = {"back","front","left","right","top","bottom"}
     for _, side in ipairs(sides) do
         if peripheral.getType(side) == "drive" then
             local p = disk.getMountPath(side)
-            if p and fs.exists(p.."/cluster_worker.lua") then return p end
+            if p and fs.exists(p.."/cluster_worker.lua") then return p, side end
         end
     end
+    -- Check wired network peripheral drives
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "drive" then
+            local p = disk.getMountPath(name)
+            if p and fs.exists(p.."/cluster_worker.lua") then return p, name end
+        end
+    end
+    return nil, nil
 end
 
-local diskPath = findDisk()
+local diskPath, diskPeripheral = findDisk()
 if diskPath then
-    -- Add disk to package path
+    print("Worker disk: " .. diskPath .. " (via " .. tostring(diskPeripheral) .. ")")
     if package and package.path then
         package.path = package.path .. ";" .. diskPath .. "/?.lua"
     end
-
-    -- Run worker
     shell.run(diskPath .. "/cluster_worker.lua")
 else
-    print("ERROR: cluster_worker.lua not found!")
+    print("ERROR: cluster_worker.lua not found on any disk!")
+    print("Make sure worker disk with AI modules is attached.")
 end
 ]]
 
@@ -203,17 +334,22 @@ end
 
 print("Installing master computer...")
 
--- Create master startup
+-- Write master startup to computer root
 local file = fs.open("startup.lua", "w")
 file.write(MASTER_STARTUP)
 file.close()
 
--- Copy to disk too
+-- Copy master startup to disk too (backup)
 file = fs.open(masterDisk .. "/startup.lua", "w")
 file.write(MASTER_STARTUP)
 file.close()
 
-print("  + startup.lua")
+-- Also write universal startup as fallback
+file = fs.open(masterDisk .. "/universal_startup.lua", "w")
+file.write(UNIVERSAL_STARTUP)
+file.close()
+
+print("  + startup.lua (master)")
 print("  + Master computer ready")
 print("")
 
@@ -224,9 +360,9 @@ print("")
 print("Installing worker computers...")
 
 for i, drive in ipairs(workerDrives) do
-    write("  Worker " .. i .. " (" .. drive.path .. "): ")
+    write("  Worker " .. i .. " (disk at " .. drive.path .. " via " .. drive.name .. "): ")
 
-    -- Create worker startup
+    -- Write worker startup to disk
     local file = fs.open(drive.path .. "/startup.lua", "w")
     file.write(WORKER_STARTUP)
     file.close()
@@ -254,6 +390,55 @@ for i, drive in ipairs(workerDrives) do
     print(copiedCount .. " modules copied")
 end
 
+-- ============================================================================
+-- INSTALL STARTUP TO WORKER COMPUTERS (via rednet)
+-- ============================================================================
+
+if #workerComputers > 0 then
+    print("")
+    print("Setting up worker computer startups via rednet...")
+
+    -- Open modems
+    local modemOpened = false
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "modem" then
+            rednet.open(name)
+            modemOpened = true
+        end
+    end
+
+    if modemOpened then
+        -- Turn on each worker and send them the worker startup script
+        for i, comp in ipairs(workerComputers) do
+            write("  Worker computer " .. comp.id .. ": ")
+            peripheral.call(comp.name, "turnOn")
+            sleep(1)
+
+            -- Send the worker startup script for them to install
+            rednet.send(comp.id, {
+                type = "install_startup",
+                content = WORKER_STARTUP
+            }, "SUPERAI_INSTALL")
+
+            -- Wait for acknowledgment
+            local deadline = os.clock() + 5
+            local acked = false
+            while os.clock() < deadline do
+                local sid, msg = rednet.receive("SUPERAI_INSTALL", 0.5)
+                if sid == comp.id and msg and msg.type == "startup_ack" then
+                    acked = true
+                    break
+                end
+            end
+
+            print(acked and "startup installed" or "timeout (manual setup needed)")
+        end
+    else
+        print("  No modems found - worker computers need manual startup setup")
+        print("  Copy 'startup.lua' (worker version) to each worker computer root")
+    end
+end
+
 print("")
 print("Installation complete!")
 print("")
@@ -263,8 +448,10 @@ print("")
 -- ============================================================================
 
 print("=== Cluster Configuration ===")
-print("Master Computer: " .. os.getComputerID())
-print("Worker Nodes: " .. #workerComputers)
+print("Master Computer ID: " .. os.getComputerID())
+print("Master Disk: " .. masterDisk .. " (via " .. masterDiskPeripheral .. ")")
+print("Worker Drives: " .. #workerDrives)
+print("Worker Computers: " .. #workerComputers)
 print("Total Modules: " .. (existingCount + downloadedCount))
 print("")
 print("AI Roles:")
@@ -278,6 +465,10 @@ print("  - Knowledge: Knowledge graph and dictionary")
 print("  - Code: Code generation")
 print("  - Context: Context-aware processing")
 print("  - Advanced: RLHF, attention, sampling")
+print("")
+print("NOTE: If worker computers show 'startup.lua timeout',")
+print("manually run on each worker: shell.run(disk_path..'/cluster_worker.lua')")
+print("Then run cluster_worker_setup.lua on each worker to install startup.")
 print("")
 
 -- ============================================================================

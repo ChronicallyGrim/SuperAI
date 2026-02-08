@@ -12,17 +12,26 @@ local loadedModules = {}
 -- ============================================================================
 
 local function findDiskPath()
-    -- Search all sides for a disk with modules
+    -- Search all sides first (direct attachments)
     local sides = {"back", "front", "left", "right", "top", "bottom"}
     for _, side in ipairs(sides) do
         if peripheral.getType(side) == "drive" then
             local path = disk.getMountPath(side)
             if path then
-                return path
+                return path, side
             end
         end
     end
-    return ""
+    -- Also search peripheral names (wired modem network drives)
+    for _, name in ipairs(peripheral.getNames()) do
+        if peripheral.getType(name) == "drive" then
+            local path = disk.getMountPath(name)
+            if path then
+                return path, name
+            end
+        end
+    end
+    return "", nil
 end
 
 local function loadModule(moduleName, diskPath)
@@ -351,13 +360,17 @@ local function main()
     end
 
     -- Find disk
-    local diskPath = findDiskPath()
+    local diskPath, diskPeripheral = findDiskPath()
 
     term.clear()
     term.setCursorPos(1, 1)
     print("SuperAI Cluster Worker")
     print("ID: " .. os.getComputerID())
-    print("Disk: " .. (diskPath ~= "" and diskPath or "NONE"))
+    if diskPath ~= "" then
+        print("Disk: " .. diskPath .. " (via " .. tostring(diskPeripheral) .. ")")
+    else
+        print("Disk: NONE - no disk found on any side or peripheral!")
+    end
     print("Waiting for role assignment...")
     print("")
 
