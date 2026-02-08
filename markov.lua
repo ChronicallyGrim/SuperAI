@@ -324,39 +324,90 @@ function M.getStats()
 end
 
 -- ============================================================================
+-- INIT (called automatically by cluster_worker on module load)
+-- ============================================================================
+
+function M.init()
+    -- Try to load saved training data first
+    if M.load() then
+        return
+    end
+    -- No saved data found, seed with defaults
+    M.initializeWithDefaults()
+end
+
+-- ============================================================================
 -- PRE-TRAINING DATA
 -- ============================================================================
 
 function M.initializeWithDefaults()
     -- Train on common conversational patterns
     local training_data = {
+        -- Greetings / small talk
         "Hello! How are you doing today?",
         "I'm doing great, thanks for asking!",
+        "Hey there, nice to meet you!",
+        "Hi! What brings you here today?",
+        "Good to see you! How have you been?",
+        "Not bad, just hanging out and chatting.",
+        "I'm doing well, thanks for checking in.",
+        "Hey! Always good to hear from you.",
+        -- Questions and curiosity
         "What can I help you with?",
+        "That's a good question, let me think about it.",
+        "Tell me more about what you're thinking.",
+        "What would you like to know?",
+        "Have you thought about it from another angle?",
+        "What made you curious about that?",
+        "I'd love to hear more about that topic.",
+        "Can you explain what you mean by that?",
+        -- Acknowledgements and responses
         "That's really interesting, tell me more.",
         "I understand what you mean.",
         "That makes a lot of sense to me.",
         "Thanks for explaining that.",
         "I appreciate you sharing that with me.",
-        "That's a good question.",
-        "Let me think about that for a moment.",
         "I see what you're saying.",
         "That's really cool!",
         "I love talking about this stuff.",
         "You're absolutely right about that.",
         "I hadn't thought about it that way.",
         "That's a great point!",
-        "Tell me more about what you're thinking.",
         "I'm here to help however I can.",
-        "What would you like to know?",
         "That sounds really interesting!",
+        "Wow, I didn't know that before.",
+        "That's fascinating, thanks for telling me.",
+        "I get what you're saying now.",
+        -- Opinions and discussion
+        "I think that depends on a few things.",
+        "That's a tricky one to answer.",
+        "There are a lot of ways to look at it.",
+        "Honestly, I'm not totally sure about that.",
+        "It's hard to say without more context.",
+        "That could go either way really.",
+        "I think you might be onto something there.",
+        "From what I know that sounds about right.",
+        -- Encouragement
+        "Don't worry, I'm sure you'll figure it out.",
+        "That sounds like a solid plan to me.",
+        "You're doing great, keep it up!",
+        "I believe you can handle it.",
+        "That's a really smart way to approach things.",
+        -- Casual filler
+        "Yeah that totally makes sense.",
+        "Oh interesting, I hadn't considered that.",
+        "Haha, fair enough I suppose.",
+        "I can see why you'd think that.",
+        "Good point, I think you're right.",
+        "Honestly same, I feel that way too sometimes.",
+        "That's kind of wild when you think about it.",
     }
-    
+
     for _, text in ipairs(training_data) do
         M.train(text, 1)
         M.train(text, 2)
     end
-    
+
     M.save()
 end
 

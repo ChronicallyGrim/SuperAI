@@ -709,13 +709,54 @@ function M.reset()
         contexts_learned = 0,
         successful_generations = 0
     }
-    
+
     -- Delete saved files
     pcall(function() fs.delete("context_markov.dat") end)
     pcall(function() fs.delete("context_markov.dat.raid") end)
-    
+
     print("Training data reset!")
     return true
+end
+
+-- ============================================================================
+-- INIT (called automatically by cluster_worker on module load)
+-- ============================================================================
+
+function M.init()
+    -- Try to load saved training data first
+    if M.load() then
+        return
+    end
+    -- No saved data, seed with defaults
+    M.initializeWithDefaults()
+end
+
+function M.initializeWithDefaults()
+    local pairs_data = {
+        -- greeting context
+        {"Hello!", "Hey there! Great to chat with you.", {"greeting", "conversation_start"}},
+        {"Hi there!", "Hi! How's it going?", {"greeting"}},
+        {"Hey, how are you?", "I'm doing well, thanks for asking! How about you?", {"greeting", "status_question"}},
+        {"Good morning!", "Good morning! Hope you're having a nice day.", {"greeting"}},
+        -- status responses
+        {"I'm doing great!", "That's wonderful to hear!", {"responding_to_statement", "status_positive"}},
+        {"I'm not feeling well.", "I'm sorry to hear that. Hope you feel better soon.", {"responding_to_statement", "status_negative"}},
+        {"I'm okay I guess.", "I understand. Is there anything I can do to help?", {"responding_to_statement", "status_neutral"}},
+        -- questions
+        {"What can you do?", "I can chat, answer questions, and help you think through problems.", {"asking_question", "what_question"}},
+        {"How does that work?", "Let me try to explain it as clearly as I can.", {"asking_question", "how_question"}},
+        {"Why is that?", "Good question. There are a few reasons for that.", {"asking_question", "why_question"}},
+        -- agreements and acknowledgements
+        {"Yeah exactly!", "Glad we're on the same page about that.", {"agreement", "short_response"}},
+        {"Cool.", "Awesome! Let me know if you want to dig deeper.", {"acknowledgment", "short_response"}},
+        {"No that's wrong.", "Fair enough, I might be mistaken. What do you think?", {"disagreement", "short_response"}},
+    }
+
+    for _, pair in ipairs(pairs_data) do
+        M.trainWithContext(pair[1], pair[2], pair[3])
+    end
+
+    M.save()
 end
 
 return M
