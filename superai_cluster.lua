@@ -116,42 +116,62 @@ function M.init()
 
     print("Found " .. #computers .. " worker computers")
 
-    -- Assign roles to workers
+    -- Turn on ALL workers first, then wait for them to boot
+    print("\nStarting all worker computers...")
+    for i, comp in ipairs(computers) do
+        peripheral.call(comp.name, "turnOn")
+        print("  Turned on worker " .. comp.id)
+    end
+
+    -- Wait for workers to boot and start their startup scripts
+    print("Waiting for workers to boot (15 seconds)...")
+    sleep(15)
+
+    -- Assign roles to workers with retry logic
     print("\nAssigning AI roles to workers...")
     for i, comp in ipairs(computers) do
         local role = M.ROLES[i]
         if role then
-            -- Turn on worker
-            peripheral.call(comp.name, "turnOn")
-            sleep(0.5)
+            print("  " .. role:upper() .. " -> worker " .. comp.id .. "...")
 
-            -- Send role assignment
-            rednet.send(comp.id, {
-                type = "assign_role",
-                role = role,
-                modules = M.MODULE_MAP[role]
-            }, M.PROTOCOL)
+            -- Retry role assignment up to 6 times (30 second total window)
+            local assigned = false
+            for attempt = 1, 6 do
+                -- Send role assignment
+                rednet.send(comp.id, {
+                    type = "assign_role",
+                    role = role,
+                    modules = M.MODULE_MAP[role]
+                }, M.PROTOCOL)
 
-            -- Wait for acknowledgment
-            local deadline = os.clock() + 5
-            while os.clock() < deadline do
-                local senderID, message = rednet.receive(M.PROTOCOL, 0.5)
-                if senderID == comp.id and message and message.type == "role_ack" then
-                    M.workers[role] = {
-                        id = comp.id,
-                        name = comp.name,
-                        ready = message.ok,
-                        modules = message.loaded_modules or {}
-                    }
-                    print("  " .. role:upper() .. ": " .. (message.ok and "READY" or "ERROR") ..
-                          " (" .. #(message.loaded_modules or {}) .. " modules)")
-                    break
+                -- Wait for acknowledgment (5 seconds per attempt)
+                local deadline = os.clock() + 5
+                while os.clock() < deadline do
+                    local senderID, message = rednet.receive(M.PROTOCOL, 0.5)
+                    if senderID == comp.id and message and message.type == "role_ack" then
+                        M.workers[role] = {
+                            id = comp.id,
+                            name = comp.name,
+                            ready = message.ok,
+                            modules = message.loaded_modules or {}
+                        }
+                        print("  " .. role:upper() .. ": " .. (message.ok and "READY" or "ERROR") ..
+                              " (" .. #(message.loaded_modules or {}) .. " modules)")
+                        assigned = true
+                        break
+                    end
+                end
+
+                if assigned then break end
+                if attempt < 6 then
+                    print("    Attempt " .. attempt .. " timed out, retrying...")
                 end
             end
 
-            if not M.workers[role] then
+            if not assigned then
                 M.workers[role] = {id = comp.id, name = comp.name, ready = false}
-                print("  " .. role:upper() .. ": TIMEOUT")
+                print("  " .. role:upper() .. ": FAILED (worker " .. comp.id ..
+                      " not responding - run cluster_worker_setup.lua on that computer)")
             end
         end
     end
