@@ -393,6 +393,114 @@ function M.shutdown()
 end
 
 -- ============================================================================
+-- CONFIGURATION PERSISTENCE
+-- ============================================================================
+
+local CONFIG_FILE = "superai_config.dat"
+
+local function loadConfig()
+    if fs.exists(CONFIG_FILE) then
+        local f = fs.open(CONFIG_FILE, "r")
+        if f then
+            local content = f.readAll()
+            f.close()
+            return textutils.unserialize(content) or {}
+        end
+    end
+    return {}
+end
+
+local function saveConfig(config)
+    local f = fs.open(CONFIG_FILE, "w")
+    if f then
+        f.write(textutils.serialize(config))
+        f.close()
+    end
+end
+
+-- ============================================================================
+-- FIRST RUN SETUP
+-- ============================================================================
+
+local function firstRunSetup(config)
+    print("")
+    print("=== First Time Setup ===")
+    print("")
+
+    -- Ask for user's name
+    write("Before we start, what should I call you? ")
+    local nickname = read()
+    if nickname and nickname ~= "" then
+        config.userName = nickname
+        print("")
+        print("Nice to meet you, " .. nickname .. "!")
+    else
+        config.userName = "User"
+    end
+
+    -- Ask what to call the AI
+    print("")
+    write("What would you like to call me? (default: SuperAI) ")
+    local botName = read()
+    if botName and botName ~= "" then
+        config.botName = botName
+        print("")
+        print("Cool! You can call me " .. botName .. " then!")
+    else
+        config.botName = "SuperAI"
+    end
+
+    -- Chat color picker
+    print("")
+    print("Pick your chat color:")
+    local chatColors = {
+        {name = "white",     code = colors.white},
+        {name = "orange",    code = colors.orange},
+        {name = "magenta",   code = colors.magenta},
+        {name = "lightBlue", code = colors.lightBlue},
+        {name = "yellow",    code = colors.yellow},
+        {name = "lime",      code = colors.lime},
+        {name = "pink",      code = colors.pink},
+        {name = "cyan",      code = colors.cyan},
+        {name = "purple",    code = colors.purple},
+        {name = "blue",      code = colors.blue},
+        {name = "green",     code = colors.green},
+        {name = "red",       code = colors.red},
+        {name = "lightGray", code = colors.lightGray},
+        {name = "gray",      code = colors.gray},
+    }
+
+    for i = 1, #chatColors, 2 do
+        local left = i .. ") " .. chatColors[i].name
+        local right = ""
+        if chatColors[i + 1] then
+            right = (i + 1) .. ") " .. chatColors[i + 1].name
+        end
+        left = left .. string.rep(" ", 20 - #left)
+        print(left .. right)
+    end
+
+    write("Number (or Enter for white): ")
+    local choice = tonumber(read())
+    if choice and chatColors[choice] then
+        config.chatColor = chatColors[choice].code
+        config.chatColorName = chatColors[choice].name
+        print("")
+        print("Great choice! Chat will appear in " .. chatColors[choice].name .. ".")
+    else
+        config.chatColor = colors.white
+        config.chatColorName = "white"
+    end
+
+    config.setupDone = true
+    saveConfig(config)
+
+    print("")
+    print("Setup complete! Let's get started.")
+    print("")
+end
+
+-- ============================================================================
 -- INTERACTIVE MODE
 -- ============================================================================
 
@@ -402,13 +510,27 @@ function M.run()
         return
     end
 
-    print("SuperAI Cluster is ready!")
+    -- Load saved config
+    local config = loadConfig()
+
+    -- First run setup if not done yet
+    if not config.setupDone then
+        firstRunSetup(config)
+    end
+
+    local userName = config.userName or "User"
+    local botName = config.botName or "SuperAI"
+    local chatColor = config.chatColor or colors.white
+
+    print("=== " .. botName .. " Cluster is ready! ===")
     print("Type 'quit' to exit, 'status' for cluster status")
+    print("Type 'setup' to redo personalization settings")
     print("")
 
-    local userName = "User"
-
     while true do
+        if term and term.setTextColor then
+            term.setTextColor(colors.white)
+        end
         write(userName .. "> ")
         local input = read()
 
@@ -427,15 +549,30 @@ function M.run()
                       " (" .. info.modules .. " modules)")
             end
             print("")
+        elseif input == "setup" then
+            -- Allow re-running setup
+            config.setupDone = false
+            firstRunSetup(config)
+            userName = config.userName or "User"
+            botName = config.botName or "SuperAI"
+            chatColor = config.chatColor or colors.white
         elseif input:match("^name ") then
             userName = input:sub(6)
+            config.userName = userName
+            saveConfig(config)
             print("Hello " .. userName .. "!")
         else
             -- Process input through cluster
             local processingResults = M.processInput(input, userName)
             local response = M.generateResponse(input, userName, processingResults)
 
-            print("\nSuperAI: " .. response)
+            if term and term.setTextColor then
+                term.setTextColor(chatColor)
+            end
+            print("\n" .. botName .. ": " .. response)
+            if term and term.setTextColor then
+                term.setTextColor(colors.white)
+            end
             if processingResults.intent then
                 print("[" .. processingResults.intent .. " | sentiment: " ..
                       string.format("%.2f", processingResults.sentiment or 0) .. "]")
