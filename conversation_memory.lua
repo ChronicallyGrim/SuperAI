@@ -251,14 +251,17 @@ function M.startSession(userName)
         topicStack = {},
         emotionalArc = {},
         contextFlags = {},
+        pendingQuestions = {},  -- Track unanswered questions
+        sharedReferences = {},  -- Track things both parties referred to
+        conversationFlow = "normal",  -- normal, storytelling, problemsolving, casual
     }
-    
+
     if userName then
         local user = M.getUser(userName)
         user.conversationCount = user.conversationCount + 1
         M.saveUsers()
     end
-    
+
     return M.sessionMemory
 end
 
@@ -435,15 +438,114 @@ end
 function M.getStats()
     local userCount = 0
     for _ in pairs(M.users) do userCount = userCount + 1 end
-    
+
     local factCount = 0
     for _ in pairs(M.learnedFacts) do factCount = factCount + 1 end
-    
+
     return {
         users = userCount,
         learnedFacts = factCount,
         sessionTurns = #M.sessionMemory.turns,
     }
+end
+
+-- ============================================================================
+-- CONVERSATIONAL CONTINUITY
+-- ============================================================================
+
+-- Track a question that needs answering
+function M.trackQuestion(question, askedBy)
+    table.insert(M.sessionMemory.pendingQuestions, {
+        question = question,
+        askedBy = askedBy,
+        time = os.epoch and os.epoch("utc") or os.time()
+    })
+end
+
+-- Mark a question as answered
+function M.questionAnswered(questionText)
+    for i, q in ipairs(M.sessionMemory.pendingQuestions) do
+        if q.question:lower():find(questionText:lower(), 1, true) then
+            table.remove(M.sessionMemory.pendingQuestions, i)
+            return true
+        end
+    end
+    return false
+end
+
+-- Get unanswered questions
+function M.getUnansweredQuestions()
+    return M.sessionMemory.pendingQuestions
+end
+
+-- Track shared references (things both user and AI mentioned)
+function M.addSharedReference(reference, context)
+    M.sessionMemory.sharedReferences[reference:lower()] = {
+        reference = reference,
+        context = context,
+        mentions = 1,
+        lastMentioned = os.epoch and os.epoch("utc") or os.time()
+    }
+end
+
+function M.mentionReference(reference)
+    local ref = M.sessionMemory.sharedReferences[reference:lower()]
+    if ref then
+        ref.mentions = ref.mentions + 1
+        ref.lastMentioned = os.epoch and os.epoch("utc") or os.time()
+    end
+end
+
+function M.getSharedReferences()
+    local refs = {}
+    for _, ref in pairs(M.sessionMemory.sharedReferences) do
+        table.insert(refs, ref)
+    end
+    table.sort(refs, function(a, b) return a.mentions > b.mentions end)
+    return refs
+end
+
+-- Get conversational continuity suggestions
+function M.getContinuitySuggestions()
+    local suggestions = {}
+
+    -- Check for unanswered questions
+    if #M.sessionMemory.pendingQuestions > 0 then
+        local oldest = M.sessionMemory.pendingQuestions[1]
+        if oldest.askedBy == "user" then
+            suggestions.unansweredQuestion = oldest.question
+        end
+    end
+
+    -- Check if we should follow up on previous topic
+    if M.sessionMemory.currentTopic and #M.sessionMemory.turns > 3 then
+        suggestions.previousTopic = M.sessionMemory.currentTopic
+    end
+
+    -- Suggest shared references to build on
+    local refs = M.getSharedReferences()
+    if #refs > 0 then
+        suggestions.sharedReference = refs[1].reference
+    end
+
+    return suggestions
+end
+
+-- Remember a callback or promise made by AI
+function M.addCallback(promise, relatedTo)
+    if not M.sessionMemory.callbacks then
+        M.sessionMemory.callbacks = {}
+    end
+
+    table.insert(M.sessionMemory.callbacks, {
+        promise = promise,
+        relatedTo = relatedTo,
+        time = os.epoch and os.epoch("utc") or os.time()
+    })
+end
+
+function M.getCallbacks()
+    return M.sessionMemory.callbacks or {}
 end
 
 return M
