@@ -1,7 +1,21 @@
 -- context_markov.lua
--- Context-aware Markov chains that understand conversation flow
+-- Advanced context-aware Markov chains that understand conversation flow
+-- Features: Higher-order context chains, interpolation, quality scoring
 
 local M = {}
+
+-- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+M.config = {
+    max_order = 3,           -- Support up to 3-word chains (4 is too memory-heavy for context)
+    default_order = 2,       -- Default generation order
+    temperature = 1.0,       -- Sampling randomness
+    interpolation = true,    -- Blend multiple contexts
+    quality_threshold = 0.4, -- Min quality score
+    max_length = 25,         -- Max words per response
+}
 
 -- ============================================================================
 -- CONTEXT-TAGGED MARKOV CHAINS
@@ -10,7 +24,7 @@ local M = {}
 M.chains = {
     -- Context: What happened before this response
     contexts = {},
-    
+
     -- Responses tagged by context
     responses = {}
 }
@@ -162,6 +176,106 @@ local MAX_SEQUENCES_PER_KEY = 10  -- Reduced from 20
 local MAX_CONTEXTS = 50           -- Reduced from 100
 local MAX_TOTAL_PATTERNS = 50000  -- Hard limit on total patterns
 
+-- ============================================================================
+-- ADVANCED TOKENIZATION (imported from markov.lua)
+-- ============================================================================
+
+local function tokenize(text)
+    local words = {}
+    local current = ""
+
+    for i = 1, #text do
+        local char = text:sub(i, i)
+
+        if char:match("%s") then
+            if #current > 0 then
+                table.insert(words, current)
+                current = ""
+            end
+        elseif char:match("[.!?]") then
+            if #current > 0 then
+                table.insert(words, current .. char)
+                current = ""
+            else
+                table.insert(words, char)
+            end
+        elseif char:match("[,;:]") then
+            if #current > 0 then
+                table.insert(words, current .. char)
+                current = ""
+            end
+        else
+            current = current .. char
+        end
+    end
+
+    if #current > 0 then
+        table.insert(words, current)
+    end
+
+    return words
+end
+
+local function isSentenceEnd(word)
+    return word:match("[.!?]$") ~= nil
+end
+
+local function isSentenceStart(word)
+    local first = word:sub(1, 1)
+    return first == first:upper() and first ~= first:lower()
+end
+
+-- ============================================================================
+-- QUALITY SCORING
+-- ============================================================================
+
+local function scoreResponse(text)
+    local score = 0.5
+    local words = tokenize(text)
+
+    if #words == 0 then
+        return 0.0
+    end
+
+    -- Proper length
+    if #words >= 8 and #words <= 25 then
+        score = score + 0.2
+    elseif #words >= 5 and #words <= 30 then
+        score = score + 0.1
+    end
+
+    -- Ending punctuation
+    if isSentenceEnd(words[#words]) then
+        score = score + 0.15
+    end
+
+    -- Starting capital
+    if isSentenceStart(words[1]) then
+        score = score + 0.1
+    end
+
+    -- Penalty for very short
+    if #words < 3 then
+        score = score - 0.3
+    end
+
+    -- Variety bonus
+    local unique = {}
+    for _, word in ipairs(words) do
+        unique[word:lower()] = true
+    end
+    local uniqueness = 0
+    for _ in pairs(unique) do uniqueness = uniqueness + 1 end
+    local variety = uniqueness / #words
+    score = score + (variety * 0.15)
+
+    return math.max(0.0, math.min(1.0, score))
+end
+
+-- ============================================================================
+-- CONTEXT-AWARE TRAINING (with higher-order chains)
+-- ============================================================================
+
 function M.trainWithContext(message, response, context_tags)
     if not message or not response or #message == 0 or #response == 0 then
         return
@@ -218,55 +332,161 @@ function M.trainWithContext(message, response, context_tags)
         end
     end
     
-    -- Build word chains (order-2 Markov)
-    local words = {}
-    for word in response:gmatch("%S+") do
-        table.insert(words, word)
-    end
-    
-    for i = 1, #words - 2 do
-        local key = words[i] .. " " .. words[i+1]
-        local next_word = words[i+2]
-        
-        if not context.sequences[key] then
-            context.sequences[key] = {}
+    -- Build word chains for multiple orders (1-3)
+    local words = tokenize(response)
+
+    for order = 1, math.min(M.config.max_order, #words - 1) do
+        for i = 1, #words - order do
+            -- Build state key
+            local state_words = {}
+            for j = 0, order - 1 do
+                table.insert(state_words, words[i + j])
+            end
+            local key = table.concat(state_words, " ")
+            local next_word = words[i + order]
+
+            if not context.sequences[key] then
+                context.sequences[key] = {}
+            end
+
+            -- Limit sequence array size
+            if #context.sequences[key] < MAX_SEQUENCES_PER_KEY then
+                table.insert(context.sequences[key], next_word)
+                M.stats.total_patterns = M.stats.total_patterns + 1
+            else
+                -- Replace random entry to keep variety
+                local idx = math.random(MAX_SEQUENCES_PER_KEY)
+                context.sequences[key][idx] = next_word
+            end
         end
-        
-        -- Limit sequence array size
-        if #context.sequences[key] < MAX_SEQUENCES_PER_KEY then
-            table.insert(context.sequences[key], next_word)
-            M.stats.total_patterns = M.stats.total_patterns + 1
-        else
-            -- Replace random entry to keep variety
-            local idx = math.random(MAX_SEQUENCES_PER_KEY)
-            context.sequences[key][idx] = next_word
-        end
     end
-    
+
     context.count = context.count + 1
 end
 
 -- ============================================================================
--- SMART GENERATION WITH CONTEXT
+-- ADVANCED GENERATION WITH BACKOFF, INTERPOLATION, AND QUALITY FILTERING
 -- ============================================================================
 
-function M.generateWithContext(previous_messages, current_message, max_words)
-    max_words = max_words or 20
-    
+local function selectNextWord(options, temperature)
+    temperature = temperature or M.config.temperature
+
+    if not options or #options == 0 then
+        return nil
+    end
+
+    -- Count frequencies
+    local freq = {}
+    for _, word in ipairs(options) do
+        freq[word] = (freq[word] or 0) + 1
+    end
+
+    -- Apply temperature
+    local weights = {}
+    local total_weight = 0
+
+    for word, count in pairs(freq) do
+        local weight = math.pow(count, 1.0 / temperature)
+        weights[word] = weight
+        total_weight = total_weight + weight
+    end
+
+    if total_weight == 0 then
+        return options[math.random(#options)]
+    end
+
+    -- Weighted random selection
+    local random_value = math.random() * total_weight
+    local cumulative = 0
+
+    for word, weight in pairs(weights) do
+        cumulative = cumulative + weight
+        if random_value <= cumulative then
+            return word
+        end
+    end
+
+    return options[math.random(#options)]
+end
+
+local function generateFromContext(context_data, max_words, temperature)
+    if not context_data or not context_data.starters or not next(context_data.starters) then
+        return nil
+    end
+
+    local response_words = {}
+
+    -- Pick starter word weighted by frequency
+    local starters = {}
+    for word, count in pairs(context_data.starters) do
+        for i = 1, count do
+            table.insert(starters, word)
+        end
+    end
+
+    if #starters == 0 then return nil end
+
+    local first_word = starters[math.random(#starters)]
+    table.insert(response_words, first_word)
+
+    -- Generate with backoff smoothing
+    for i = 2, max_words do
+        local next_word = nil
+
+        -- Try orders from high to low (backoff)
+        for order = math.min(M.config.max_order, #response_words), 1, -1 do
+            local state_words = {}
+            local start_idx = math.max(1, #response_words - order + 1)
+            for j = start_idx, #response_words do
+                table.insert(state_words, response_words[j])
+            end
+            local key = table.concat(state_words, " ")
+
+            local options = context_data.sequences[key]
+            if options and #options > 0 then
+                next_word = selectNextWord(options, temperature)
+                if next_word then
+                    break
+                end
+            end
+        end
+
+        if not next_word then
+            break
+        end
+
+        table.insert(response_words, next_word)
+
+        -- Stop at sentence boundary
+        if isSentenceEnd(next_word) then
+            break
+        end
+    end
+
+    if #response_words >= 3 then
+        return table.concat(response_words, " ")
+    end
+
+    return nil
+end
+
+function M.generateWithContext(previous_messages, current_message, max_words, num_attempts)
+    max_words = max_words or M.config.max_length
+    num_attempts = num_attempts or 3
+
     -- Detect context from conversation
     local context_tags = M.detectContext(previous_messages, current_message)
-    
-    -- Try to find matching context
-    local best_context = nil
-    local best_score = 0
-    
+
+    -- Find matching contexts (can be multiple for interpolation)
+    local matching_contexts = {}
+
     for context_key, context_data in pairs(M.chains.contexts) do
         local score = 0
         local key_tags = {}
         for tag in context_key:gmatch("[^|]+") do
             table.insert(key_tags, tag)
         end
-        
+
         -- Score based on matching tags
         for _, tag in ipairs(context_tags) do
             for _, key_tag in ipairs(key_tags) do
@@ -275,102 +495,55 @@ function M.generateWithContext(previous_messages, current_message, max_words)
                 end
             end
         end
-        
-        if score > best_score then
-            best_score = score
-            best_context = context_data
+
+        if score > 0 then
+            table.insert(matching_contexts, {context = context_data, score = score})
         end
     end
-    
-    -- Fallback to general context if no good match
-    if not best_context or best_score == 0 then
-        best_context = M.chains.contexts["general"]
+
+    -- Sort by score (best first)
+    table.sort(matching_contexts, function(a, b) return a.score > b.score end)
+
+    -- Fallback to general if no matches
+    if #matching_contexts == 0 and M.chains.contexts["general"] then
+        table.insert(matching_contexts, {context = M.chains.contexts["general"], score = 0})
     end
-    
-    if not best_context then
+
+    if #matching_contexts == 0 then
         return nil
     end
-    
-    -- Check if we have any starters
-    if not best_context.starters or not next(best_context.starters) then
-        return nil
-    end
-    
-    -- Generate response
-    local response_words = {}
-    
-    -- Pick starter word weighted by frequency
-    local starters = {}
-    for word, count in pairs(best_context.starters) do
-        for i = 1, count do
-            table.insert(starters, word)
-        end
-    end
-    
-    if #starters == 0 then return nil end
-    
-    local first_word = starters[math.random(#starters)]
-    table.insert(response_words, first_word)
-    
-    -- Find a sequence key that starts with our first word to get second word
-    local found_second = false
-    for key, options in pairs(best_context.sequences or {}) do
-        local key_first = key:match("^(%S+)")
-        if key_first == first_word and options and #options > 0 then
-            -- Extract second word from key and add continuation
-            local key_second = key:match("^%S+%s+(%S+)")
-            if key_second then
-                table.insert(response_words, key_second)
-                local next_word = options[math.random(#options)]
-                table.insert(response_words, next_word)
-                found_second = true
+
+    -- Try generating from best contexts with quality filtering
+    local best_response = nil
+    local best_quality = 0
+
+    for attempt = 1, num_attempts do
+        -- Pick from top contexts (interpolation effect)
+        local context_idx = math.min(attempt, #matching_contexts)
+        local context_data = matching_contexts[context_idx].context
+
+        local response = generateFromContext(context_data, max_words, M.config.temperature)
+
+        if response then
+            local quality = scoreResponse(response)
+
+            if quality > best_quality then
+                best_quality = quality
+                best_response = response
+            end
+
+            -- Stop if good enough
+            if quality >= 0.7 then
                 break
             end
         end
     end
-    
-    -- If couldn't find matching sequence, try any sequence
-    if not found_second and best_context.sequences then
-        for key, options in pairs(best_context.sequences) do
-            if options and #options > 0 then
-                -- Use this key's words as start
-                local w1, w2 = key:match("^(%S+)%s+(%S+)")
-                if w1 and w2 then
-                    response_words = {w1, w2}
-                    local next_word = options[math.random(#options)]
-                    table.insert(response_words, next_word)
-                    found_second = true
-                    break
-                end
-            end
-        end
-    end
-    
-    if not found_second then
-        return nil
-    end
-    
-    -- Continue generating with 2-word keys
-    for i = 4, max_words do
-        local key = response_words[#response_words - 1] .. " " .. response_words[#response_words]
-        local options = best_context.sequences[key]
-        
-        if not options or #options == 0 then break end
-        
-        local next_word = options[math.random(#options)]
-        table.insert(response_words, next_word)
-        
-        -- Stop at natural sentence endings
-        if next_word:match("[.!?]$") then
-            break
-        end
-    end
-    
-    if #response_words >= 3 then
+
+    if best_response and best_quality >= M.config.quality_threshold then
         M.stats.successful_generations = (M.stats.successful_generations or 0) + 1
-        return table.concat(response_words, " ")
+        return best_response
     end
-    
+
     return nil
 end
 
@@ -542,12 +715,13 @@ end
 
 function M.save(filepath)
     filepath = filepath or "context_markov.dat"
-    
+
     local data = {
         chains = M.chains,
-        stats = M.stats
+        stats = M.stats,
+        config = M.config
     }
-    
+
     local serialized = textutils.serialize(data)
     
     -- Try RAID first for large data (>100KB)
@@ -613,7 +787,7 @@ end
 
 function M.load(filepath)
     filepath = filepath or "context_markov.dat"
-    
+
     -- Check for RAID marker first
     if fs.exists(filepath .. ".raid") then
         local marker = fs.open(filepath .. ".raid", "r")
@@ -630,6 +804,14 @@ function M.load(filepath)
                     if data then
                         M.chains = data.chains or M.chains
                         M.stats = data.stats or M.stats
+
+                        -- Merge config
+                        if data.config then
+                            for k, v in pairs(data.config) do
+                                M.config[k] = v
+                            end
+                        end
+
                         print("Loaded from RAID: " .. #data_str .. " bytes")
                         return true
                     end
@@ -637,7 +819,7 @@ function M.load(filepath)
             end
         end
     end
-    
+
     -- Try local file
     if not fs.exists(filepath) then
         -- Also try RAID directly
@@ -654,26 +836,42 @@ function M.load(filepath)
                 if data then
                     M.chains = data.chains or M.chains
                     M.stats = data.stats or M.stats
+
+                    -- Merge config
+                    if data.config then
+                        for k, v in pairs(data.config) do
+                            M.config[k] = v
+                        end
+                    end
+
                     return true
                 end
             end
         end
         return false
     end
-    
+
     local file = fs.open(filepath, "r")
     if not file then
         return false
     end
     local data = textutils.unserialize(file.readAll())
     file.close()
-    
+
     if data then
         M.chains = data.chains or M.chains
         M.stats = data.stats or M.stats
+
+        -- Merge config
+        if data.config then
+            for k, v in pairs(data.config) do
+                M.config[k] = v
+            end
+        end
+
         return true
     end
-    
+
     return false
 end
 
@@ -682,14 +880,31 @@ function M.getStats()
     for _ in pairs(M.chains.contexts) do
         context_count = context_count + 1
     end
-    
+
     return {
         total_patterns = M.stats.total_patterns,
         contexts_learned = context_count,
         successful_generations = M.stats.successful_generations,
         max_patterns = MAX_TOTAL_PATTERNS,
-        at_capacity = M.stats.total_patterns >= MAX_TOTAL_PATTERNS
+        at_capacity = M.stats.total_patterns >= MAX_TOTAL_PATTERNS,
+        config = M.config
     }
+end
+
+-- ============================================================================
+-- CONFIGURATION HELPERS
+-- ============================================================================
+
+function M.setTemperature(temp)
+    M.config.temperature = math.max(0.1, math.min(3.0, temp))
+end
+
+function M.setQualityThreshold(threshold)
+    M.config.quality_threshold = math.max(0.0, math.min(1.0, threshold))
+end
+
+function M.setMaxOrder(order)
+    M.config.max_order = math.max(1, math.min(3, order))
 end
 
 -- Check if training has reached capacity
