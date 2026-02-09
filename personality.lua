@@ -555,4 +555,151 @@ function M.resetStats()
     }
 end
 
+-- ============================================================================
+-- ENHANCED CONVERSATIONAL BEHAVIORS
+-- ============================================================================
+
+-- Determine if AI should use a callback reference
+function M.shouldUseCallback(context)
+    context = context or {}
+
+    -- More likely if we have good memory
+    local base = M.traits.conscientiousness * 0.4
+
+    if context.hasRelevantCallback then
+        base = base * 2.0
+    end
+
+    return math.random() < base
+end
+
+-- Determine if AI should make a personal disclosure
+function M.shouldSharePersonal(context)
+    context = context or {}
+
+    -- Based on openness and relationship depth
+    local base = M.traits.openness * M.traits.authenticity * 0.3
+
+    if context.userSharedPersonal then
+        base = base * 1.5  -- Reciprocate sharing
+    end
+
+    if context.conversationDepth and context.conversationDepth > 5 then
+        base = base * 1.2  -- More likely in deeper conversations
+    end
+
+    return math.random() < base
+end
+
+-- Determine level of detail in response
+function M.getDetailLevel(context)
+    context = context or {}
+
+    local score = M.traits.verbosity * M.traits.conscientiousness
+
+    -- Adjust for user's apparent interest
+    if context.userAskedFollowUp then
+        score = score * 1.3
+    end
+
+    if context.userSeemsBored then
+        score = score * 0.6
+    end
+
+    if score < 0.3 then return "minimal" end
+    if score < 0.5 then return "brief" end
+    if score < 0.7 then return "moderate" end
+    return "detailed"
+end
+
+-- Determine if AI should acknowledge previous conversation
+function M.shouldAcknowledgePrevious(context)
+    context = context or {}
+
+    local base = M.traits.conscientiousness * 0.5
+
+    if context.isReturningUser then
+        base = base * 1.4
+    end
+
+    if context.relevantHistory then
+        base = base * 1.6
+    end
+
+    return math.random() < base
+end
+
+-- Determine conversational initiative level
+function M.getInitiativeLevel()
+    -- How proactive is AI in driving conversation?
+    local score = M.traits.extraversion * M.traits.curiosity
+
+    if score < 0.3 then return "passive" end      -- Wait for user lead
+    if score < 0.6 then return "balanced" end     -- Sometimes suggest topics
+    return "proactive"                             -- Actively drive conversation
+end
+
+-- Should use hedging language (maybe, perhaps, I think)
+function M.shouldHedge(context)
+    context = context or {}
+
+    -- Less assertive personality hedges more
+    local base = (1.0 - M.traits.assertiveness) * 0.4
+
+    if context.uncertain then
+        base = base * 2.0
+    end
+
+    if M.traits.neuroticism > 0.6 then
+        base = base * 1.3  -- Less confident personalities hedge more
+    end
+
+    return math.random() < base
+end
+
+-- Should express uncertainty honestly
+function M.shouldExpressUncertainty(certaintyLevel)
+    certaintyLevel = certaintyLevel or 0.5
+
+    -- Authentic personalities admit when unsure
+    if certaintyLevel < 0.4 and M.traits.authenticity > 0.6 then
+        return true
+    end
+
+    -- Very low certainty should usually be acknowledged
+    if certaintyLevel < 0.2 then
+        return true
+    end
+
+    return false
+end
+
+-- Get conversational temperature (how wild/creative vs safe/predictable)
+function M.getConversationalTemperature()
+    local temp = M.traits.creativity * M.traits.openness * M.traits.playfulness
+
+    if temp < 0.3 then return 0.4 end     -- Conservative
+    if temp < 0.6 then return 0.7 end     -- Balanced
+    return 1.0                             -- Creative/playful
+end
+
+-- Should build on user's statement vs change direction
+function M.shouldBuildOnStatement(context)
+    context = context or {}
+
+    local base = M.traits.agreeableness * 0.6
+
+    if context.userSeemsPassionate then
+        base = base * 1.4  -- Build on their passion
+    end
+
+    if stats.totalInteractions > 0 then
+        -- If user has responded positively to building, do it more
+        local positiveRate = stats.positiveResponses / stats.totalInteractions
+        base = base * (0.7 + positiveRate * 0.6)
+    end
+
+    return math.random() < base
+end
+
 return M

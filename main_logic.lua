@@ -77,6 +77,33 @@ local personality = require("personality")
 local mood = require("mood")
 local responses = require("responses")
 
+-- Load new conversation enhancements
+local convStrat, convMem, respGen
+success, module = pcall(require, "conversation_strategies")
+if success then
+    convStrat = module
+    print("Conversation strategies loaded - enhanced dialogue enabled!")
+else
+    print("Info: conversation_strategies.lua not found")
+end
+
+success, module = pcall(require, "conversation_memory")
+if success then
+    convMem = module
+    convMem.init()
+    print("Conversation memory loaded - deep memory enabled!")
+else
+    print("Info: conversation_memory.lua not found")
+end
+
+success, module = pcall(require, "response_generator")
+if success then
+    respGen = module
+    print("Advanced response generator loaded!")
+else
+    print("Info: response_generator.lua not found")
+end
+
 -- Load RAID system
 local raid = nil
 local success_raid, raid_module = pcall(require, "raid_system")
@@ -862,6 +889,32 @@ end
 -- ============================================================================
 
 local function handleGreeting(user, message)
+    -- Try using new response generator first
+    if respGen then
+        local ctx = {}
+        if memory.nicknames[user] then
+            ctx.user_name = memory.nicknames[user]
+        end
+
+        -- Check if returning user with conversation memory
+        if convMem then
+            local userProfile = convMem.getUser(user)
+            if userProfile and userProfile.conversationCount > 1 then
+                ctx.user_name = memory.nicknames[user] or user
+            end
+        end
+
+        local response = respGen.generateGreeting(ctx)
+
+        -- Add personality-based variation
+        if personality and math.random() < personality.get("playfulness") * 0.3 then
+            response = respGen.addFillers(response, 0.2)
+        end
+
+        return response
+    end
+
+    -- Fallback to original greetings
     local greetings = {
         "Hey! What's up?",
         "Hi! How's it going?",
@@ -872,9 +925,9 @@ local function handleGreeting(user, message)
         "Sup! How are things?",
         "Hey! Good to see you!",
     }
-    
+
     local response = utils.choose(greetings)
-    
+
     if memory.nicknames[user] then
         local personalGreetings = {
             "Hey " .. memory.nicknames[user] .. "! What's up?",
@@ -886,11 +939,24 @@ local function handleGreeting(user, message)
         }
         response = utils.choose(personalGreetings)
     end
-    
+
     return response
 end
 
 local function handleGratitude(user, message)
+    -- Use new response generator if available
+    if respGen then
+        local response = respGen.generateThanks()
+
+        -- Sometimes add appreciation back
+        if convStrat and math.random() < 0.3 then
+            response = response .. " " .. convStrat.generateEmpathy("validation")
+        end
+
+        return response
+    end
+
+    -- Fallback
     local responsesList = {
         "You're welcome!",
         "Happy to help!",
@@ -898,7 +964,7 @@ local function handleGratitude(user, message)
         "Anytime!",
         "Glad I could help!",
     }
-    
+
     return utils.choose(responsesList)
 end
 
