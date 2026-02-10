@@ -272,10 +272,43 @@ success, module = pcall(require, "tokenization")
 if success then
     tokenization = module
     print("Tokenization loaded - subword processing enabled!")
-    
+
     tokenization.load("tokenization.dat")
 else
     print("Warning: tokenization.lua not found - tokenization disabled")
+end
+
+-- NEW: Meta-cognitive and philosophical reasoning modules
+local metaCognition, introspection, philReasoning
+
+success, module = pcall(require, "meta_cognition")
+if success then
+    metaCognition = module
+    metaCognition.init()
+    print("Meta-cognition loaded - self-awareness and monitoring enabled!")
+else
+    print("Warning: meta_cognition.lua not found - meta-cognitive features disabled")
+end
+
+success, module = pcall(require, "introspection")
+if success then
+    introspection = module
+    introspection.init({
+        name = "SuperAI",
+        purpose = "helpful conversation and task assistance"
+    })
+    print("Introspection loaded - deep self-reflection enabled!")
+else
+    print("Warning: introspection.lua not found - introspection disabled")
+end
+
+success, module = pcall(require, "philosophical_reasoning")
+if success then
+    philReasoning = module
+    philReasoning.init()
+    print("Philosophical reasoning loaded - ethical and logical reasoning enabled!")
+else
+    print("Warning: philosophical_reasoning.lua not found - philosophical features disabled")
 end
 
 print("\n=== SuperAI System Ready ===")
@@ -2214,7 +2247,7 @@ Give me a few examples and I'll learn from them!]]
     elseif intent == "question" then
         -- Detect if this is a PERSONAL question vs a TOPIC question
         local lower_msg = message:lower()
-        local is_personal = lower_msg:find("how are you") or 
+        local is_personal = lower_msg:find("how are you") or
                            lower_msg:find("how're you") or
                            lower_msg:find("how do you feel") or
                            lower_msg:find("what's up") or
@@ -2227,9 +2260,42 @@ Give me a few examples and I'll learn from them!]]
                            lower_msg:find("who are you") or
                            lower_msg:find("your name") or
                            lower_msg:find("about yourself")
-        
-        -- Only use trained data for TOPIC questions (what/how/why about things)
-        local used_markov = false
+
+        -- NEW: Check for introspective/self-awareness questions
+        local is_introspective = introspection and (
+            lower_msg:find("what can you do") or
+            lower_msg:find("what are your limit") or
+            lower_msg:find("what are you good at") or
+            lower_msg:find("what do you struggle") or
+            lower_msg:find("how are you learning") or
+            lower_msg:find("what have you learned")
+        )
+
+        -- NEW: Check for philosophical questions
+        local is_philosophical = philReasoning and (
+            lower_msg:find("what is right") or lower_msg:find("what is wrong") or
+            lower_msg:find("why do we exist") or lower_msg:find("meaning of") or
+            lower_msg:find("what is truth") or lower_msg:find("what is knowledge") or
+            lower_msg:find("is it ethical") or lower_msg:find("should we")
+        )
+
+        -- Handle introspective questions
+        if is_introspective then
+            response = introspection.answerSelfQuery(message)
+            lastResponseSource = "INTROSPECTION (self-awareness)"
+        -- Handle philosophical questions
+        elseif is_philosophical then
+            local analysis = philReasoning.analyzePhilosophicalQuestion(message)
+            local resp_parts = {analysis.response.opening}
+            for _, perspective in ipairs(analysis.response.perspectives) do
+                table.insert(resp_parts, perspective)
+            end
+            table.insert(resp_parts, analysis.response.synthesis)
+            response = table.concat(resp_parts, " ")
+            lastResponseSource = "PHILOSOPHICAL_REASONING"
+        else
+            -- Only use trained data for TOPIC questions (what/how/why about things)
+            local used_markov = false
         if contextMarkov and not is_personal then
             local history_msgs = {}
             local history = getContextualHistory(user, 5)
@@ -2256,10 +2322,11 @@ Give me a few examples and I'll learn from them!]]
                 end
             end
         end
-        if not used_markov then
-            response = handleQuestion(user, message, userMood)
-            lastResponseSource = "BUILTIN (question handler)"
-        end
+            if not used_markov then
+                response = handleQuestion(user, message, userMood)
+                lastResponseSource = "BUILTIN (question handler)"
+            end
+        end  -- Close the else block for introspective/philosophical
         safeCall(personality, "resetQuestionCount", nil)
         
     else
@@ -2434,12 +2501,46 @@ Give me a few examples and I'll learn from them!]]
     if memory.conversationCount % 5 == 0 then
         saveMemory()
     end
-    
+
+    -- NEW: Meta-cognitive monitoring and introspection
+    if metaCognition then
+        -- Update cognitive state
+        metaCognition.updateCognitiveState({
+            task_difficulty = 0.5,
+            active_tasks = 1
+        })
+
+        -- Check if we need cognitive rest
+        if metaCognition.needsCognitiveRest() and math.random() < 0.1 then
+            metaCognition.refreshCognitiveResources(0.3)
+        end
+    end
+
+    if introspection then
+        -- Reflect on interaction occasionally
+        if memory.conversationCount % 10 == 0 then
+            introspection.reflect({
+                message = message,
+                response = response,
+                outcome = {success = true},
+                approach = lastResponseSource
+            })
+        end
+
+        -- Track learning progress
+        if intent then
+            introspection.trackLearning(intent, 0.7, {
+                duration = 1,
+                context = category
+            })
+        end
+    end
+
     -- Debug output showing response source
     if DEBUG_MODE and response then
         print("[DEBUG] Source: " .. lastResponseSource)
     end
-    
+
     return response
 end
 
