@@ -524,13 +524,7 @@ function M.train(num_conversations, turns_per_conversation)
         return
     end
     
-    -- Initialize RAID for progress saving
-    local raid = nil
-    pcall(function()
-        local r = require("raid_system")
-        r.init()
-        raid = r
-    end)
+    -- Using local file system for progress saving
     
     print("Training " .. num_conversations .. " conversations...")
     print("Complexity level: " .. getComplexityLevel())
