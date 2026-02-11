@@ -1,74 +1,6 @@
 -- Module: main_logic.lua
 -- Natural conversational AI with personality and useful features
 
--- ============================================================================
--- DRIVE CONFIGURATION (Load from drive_config.lua)
--- ============================================================================
-
--- Load drive configuration (peripheral names)
-local drive_config = require("drive_config")
-
--- Convert peripheral names to mount paths
-local function getMountPath(peripheral_name)
-    if not peripheral_name or peripheral_name == "" then return nil end
-    if not peripheral.isPresent(peripheral_name) then return nil end
-    return disk.getMountPath(peripheral_name)
-end
-
--- Build DRIVES table with mount paths
-DRIVES = {
-    TOP = getMountPath(drive_config.top),
-    RAM_A = {},   -- BOTTOM: Virtual memory part 1
-    RAM_B = {},   -- BACK: Virtual memory part 2
-    RAID_A = {},  -- RIGHT: Persistent memory storage
-    RAID_B = {}   -- LEFT: Persistent memory storage
-}
-
--- Convert arrays of peripheral names to mount paths
-for _, name in ipairs(drive_config.bottom or {}) do
-    local path = getMountPath(name)
-    if path then table.insert(DRIVES.RAM_A, path) end
-end
-for _, name in ipairs(drive_config.back or {}) do
-    local path = getMountPath(name)
-    if path then table.insert(DRIVES.RAM_B, path) end
-end
-for _, name in ipairs(drive_config.right or {}) do
-    local path = getMountPath(name)
-    if path then table.insert(DRIVES.RAID_A, path) end
-end
-for _, name in ipairs(drive_config.left or {}) do
-    local path = getMountPath(name)
-    if path then table.insert(DRIVES.RAID_B, path) end
-end
-
--- ============================================================================
--- ADD DISK PATHS TO LUA'S SEARCH PATH
--- ============================================================================
-
--- Add TOP drive (modules) to Lua's search path
-if package and package.path and DRIVES.TOP then
-    -- Add the TOP drive where all modules live
-    package.path = package.path .. ";" .. DRIVES.TOP .. "/?.lua"
-    
-    -- Also add all other drives to search path for flexibility
-    for _, drives_list in pairs({DRIVES.RAM_A, DRIVES.RAM_B, DRIVES.RAID_A, DRIVES.RAID_B}) do
-        for _, drive_path in ipairs(drives_list) do
-            package.path = package.path .. ";" .. drive_path .. "/?.lua"
-        end
-    end
-    
-    print("Modules loaded from: " .. DRIVES.TOP)
-    if #DRIVES.RAM_A > 0 or #DRIVES.RAM_B > 0 then
-        print("RAM drives: " .. table.concat(DRIVES.RAM_A, ", ") .. " | " .. table.concat(DRIVES.RAM_B, ", "))
-    end
-    if #DRIVES.RAID_A > 0 or #DRIVES.RAID_B > 0 then
-        print("RAID drives: " .. table.concat(DRIVES.RAID_A, ", ") .. " | " .. table.concat(DRIVES.RAID_B, ", "))
-    end
-else
-    print("WARNING: TOP drive not found, using computer root for modules")
-end
-
 local M = {}
 
 -- Load dependencies
@@ -104,16 +36,7 @@ else
     print("Info: response_generator.lua not found")
 end
 
--- Load RAID system
-local raid = nil
-local success_raid, raid_module = pcall(require, "raid_system")
-if success_raid then
-    raid = raid_module
-    raid.init()
-    print("RAID 0 system initialized")
-else
-    print("Warning: raid_system.lua not found - using local storage")
-end
+-- Using local file system for all storage
 
 -- NEW: Advanced systems (with safe loading)
 local codeGen, dictionary, learning, neuralNet, machineLearning, largeNeural, trainedNetwork, markov
@@ -407,15 +330,13 @@ local MEM_FILE = "superai_memory/memory.dat"
 
 local function loadMemory()
     local content = nil
-    
-    if raid and raid.exists(MEM_FILE) then
-        content = raid.read(MEM_FILE)
-    elseif fs.exists(MEM_FILE) then
+
+    if fs.exists(MEM_FILE) then
         local file = fs.open(MEM_FILE, "r")
         content = file.readAll()
         file.close()
     end
-    
+
     if content and content ~= "" then
         local loaded = textutils.unserialize(content)
         if loaded then
@@ -431,17 +352,13 @@ end
 
 local function saveMemory()
     local content = textutils.serialize(memory)
-    
-    if raid then
-        raid.write(MEM_FILE, content)
-    else
-        if not fs.exists("superai_memory") then
-            fs.makeDir("superai_memory")
-        end
-        local file = fs.open(MEM_FILE, "w")
-        file.write(content)
-        file.close()
+
+    if not fs.exists("superai_memory") then
+        fs.makeDir("superai_memory")
     end
+    local file = fs.open(MEM_FILE, "w")
+    file.write(content)
+    file.close()
 end
 
 -- ============================================================================
@@ -451,72 +368,16 @@ end
 local function getSystemHealth()
     local lines = {}
     table.insert(lines, "=== System Health ===")
-    
-    -- Helper to get drive stats
-    local function getDriveStats(peripheral_name)
-        if not peripheral_name then return nil end
-        if not peripheral.isPresent(peripheral_name) then return nil end
-        local mount = disk.getMountPath(peripheral_name)
-        if not mount then return nil end
-        local path = "/" .. mount
-        if not fs.exists(path) then return nil end
-        local cap = fs.getCapacity(path) or 0
-        local free = fs.getFreeSpace(path) or 0
-        local used = cap - free
-        return {
-            mount = mount,
-            usedKB = math.floor(used / 1024),
-            capKB = math.floor(cap / 1024),
-            freeKB = math.floor(free / 1024),
-            pct = cap > 0 and math.floor((used / cap) * 100) or 0
-        }
-    end
-    
-    -- Load drive config
-    local config = nil
-    pcall(function() config = require("drive_config") end)
-    
-    -- TOP DRIVE (code storage)
-    local topDrive = config and config.top or "top"
-    local top = getDriveStats(topDrive)
-    if top then
-        table.insert(lines, "TOP: " .. top.usedKB .. "/" .. top.capKB .. "KB (" .. top.pct .. "%) [" .. top.mount .. "]")
-    end
-    
-    -- RAM DRIVES (bottom + back = 6 drives)
-    if config then
-        local ramTotal, ramUsed, ramCount = 0, 0, 0
-        for _, drv in ipairs(config.bottom or {}) do
-            local s = getDriveStats(drv)
-            if s then ramTotal = ramTotal + s.capKB; ramUsed = ramUsed + s.usedKB; ramCount = ramCount + 1 end
-        end
-        for _, drv in ipairs(config.back or {}) do
-            local s = getDriveStats(drv)
-            if s then ramTotal = ramTotal + s.capKB; ramUsed = ramUsed + s.usedKB; ramCount = ramCount + 1 end
-        end
-        if ramCount > 0 then
-            local ramPct = ramTotal > 0 and math.floor((ramUsed / ramTotal) * 100) or 0
-            table.insert(lines, "RAM: " .. ramUsed .. "/" .. ramTotal .. "KB (" .. ramPct .. "%) [" .. ramCount .. " drives]")
-        end
-    end
-    
-    -- RAID DRIVES (left + right = 4 drives)
-    if config then
-        local raidTotal, raidUsed, raidCount = 0, 0, 0
-        for _, drv in ipairs(config.left or {}) do
-            local s = getDriveStats(drv)
-            if s then raidTotal = raidTotal + s.capKB; raidUsed = raidUsed + s.usedKB; raidCount = raidCount + 1 end
-        end
-        for _, drv in ipairs(config.right or {}) do
-            local s = getDriveStats(drv)
-            if s then raidTotal = raidTotal + s.capKB; raidUsed = raidUsed + s.usedKB; raidCount = raidCount + 1 end
-        end
-        if raidCount > 0 then
-            local raidPct = raidTotal > 0 and math.floor((raidUsed / raidTotal) * 100) or 0
-            table.insert(lines, "RAID: " .. raidUsed .. "/" .. raidTotal .. "KB (" .. raidPct .. "%) [" .. raidCount .. " drives]")
-        end
-    end
-    
+
+    -- Computer storage stats
+    local cap = fs.getCapacity("/") or 0
+    local free = fs.getFreeSpace("/") or 0
+    local used = cap - free
+    local usedKB = math.floor(used / 1024)
+    local capKB = math.floor(cap / 1024)
+    local pct = cap > 0 and math.floor((used / cap) * 100) or 0
+    table.insert(lines, "Storage: " .. usedKB .. "/" .. capKB .. "KB (" .. pct .. "%)")
+
     -- Training stats
     if contextMarkov then
         local stats = contextMarkov.getStats()
