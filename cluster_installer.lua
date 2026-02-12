@@ -175,27 +175,6 @@ function M.analyze(d) return {sentiment = v and v.getSentiment and v.getSentimen
 return M
 ]]
 
-local WORKER_KNOWLEDGE = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local kg
-local ok, m = pcall(dofile, p.."/knowledge_graph.lua")
-if ok then kg = m; print("Knowledge OK") else print("KG: "..tostring(m)) end
-function M.query(d) return {result = kg and kg.query and kg.query(d.question or "") or nil} end
-function M.describe(d) return {description = kg and kg.describe and kg.describe(d.entity or "") or "?"} end
-return M
-]]
-
 local WORKER_MEMORY = [[
 local M = {}
 local function findMyDisk()
@@ -265,160 +244,8 @@ function M.getPersonality(d) return {personality = pers and pers.getPersonalityS
 return M
 ]]
 
-local WORKER_MOOD = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local mood
-local ok, m = pcall(dofile, p.."/mood.lua")
-if ok then mood = m; if mood.init then mood.init() end; print("Mood OK") else print("Mood: "..tostring(m)) end
-function M.getCurrentMood(d) return {mood = mood and mood.getCurrentMood and mood.getCurrentMood() or "neutral"} end
-function M.updateMood(d) if mood and mood.updateMood then mood.updateMood(d.sentiment) end return {ok=true} end
-function M.predictEmotion(d) return {prediction = mood and mood.predictEmotion and mood.predictEmotion(d.context) or "neutral"} end
-return M
-]]
-
-local WORKER_ATTENTION = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local att
-local ok, m = pcall(dofile, p.."/attention.lua")
-if ok then att = m; print("Attention OK") else print("Att: "..tostring(m)) end
-function M.computeAttention(d) return {weights = att and att.computeAttention and att.computeAttention(d.query, d.keys, d.values) or {}} end
-function M.multiHeadAttention(d) return {output = att and att.multiHeadAttention and att.multiHeadAttention(d.input, d.numHeads) or {}} end
-return M
-]]
-
-local WORKER_NEURAL = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local nn
-local ok, m = pcall(dofile, p.."/neural_net.lua")
-if ok then nn = m; print("Neural Net OK") else print("NN: "..tostring(m)) end
-function M.predict(d) return {output = nn and nn.predict and nn.predict(d.network, d.input) or {}} end
-function M.train(d) if nn and nn.train then nn.train(d.network, d.data, d.epochs) end return {ok=true} end
-return M
-]]
-
-local WORKER_METACOG = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local mc
-local ok, m = pcall(dofile, p.."/meta_cognition.lua")
-if ok then mc = m; if mc.init then mc.init() end; print("Meta-Cognition OK") else print("MC: "..tostring(m)) end
-function M.assessConfidence(d) return {confidence = mc and mc.assessConfidence and mc.assessConfidence(d.prediction) or 0.5} end
-function M.estimateUncertainty(d) return {uncertainty = mc and mc.estimateUncertainty and mc.estimateUncertainty(d.context) or {}} end
-function M.getCognitiveState(d) return {state = mc and mc.getCognitiveState and mc.getCognitiveState() or {}} end
-return M
-]]
-
-local WORKER_INTROSPECT = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local intro
-local ok, m = pcall(dofile, p.."/introspection.lua")
-if ok then intro = m; if intro.init then intro.init() end; print("Introspection OK") else print("Intro: "..tostring(m)) end
-function M.assessCapability(d) return {assessment = intro and intro.assessCapability and intro.assessCapability(d.capability) or {}} end
-function M.recognizeLimitation(d) return {limitations = intro and intro.recognizeLimitation and intro.recognizeLimitation(d.task) or {}} end
-function M.getSelfModel(d) return {model = intro and intro.getSelfModel and intro.getSelfModel() or {}} end
-return M
-]]
-
-local WORKER_PHILOSOPHY = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local phil
-local ok, m = pcall(dofile, p.."/philosophical_reasoning.lua")
-if ok then phil = m; print("Philosophy OK") else print("Phil: "..tostring(m)) end
-function M.reasonEthically(d) return {reasoning = phil and phil.reasonEthically and phil.reasonEthically(d.scenario) or {}} end
-function M.logicalInference(d) return {conclusion = phil and phil.logicalInference and phil.logicalInference(d.premises) or nil} end
-function M.thinkAbstractly(d) return {abstraction = phil and phil.thinkAbstractly and phil.thinkAbstractly(d.concept) or {}} end
-return M
-]]
-
-local WORKER_CONVERSATION = [[
-local M = {}
-local function findMyDisk()
-    local sides = {"back","front","left","right","top","bottom"}
-    for _, side in ipairs(sides) do
-        if peripheral.getType(side) == "drive" then
-            local p = disk.getMountPath(side)
-            if p then return p end
-        end
-    end
-    return ""
-end
-local p = findMyDisk()
-local conv
-local ok, m = pcall(dofile, p.."/natural_conversation.lua")
-if ok then conv = m; if conv.init then conv.init() end; print("Conversation OK") else print("Conv: "..tostring(m)) end
-function M.planResponse(d) return {plan = conv and conv.planResponse and conv.planResponse(d.context) or {}} end
-function M.adaptStyle(d) return {style = conv and conv.adaptStyle and conv.adaptStyle(d.userStyle) or {}} end
-function M.repairConversation(d) return {repair = conv and conv.repairConversation and conv.repairConversation(d.issue) or {}} end
-return M
-]]
-
 local MASTER_BRAIN = [[
-local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","knowledge","memory","response","personality","mood","attention","neural","metacog","introspect","philosophy","conversation"}
+local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","memory","response","personality"}
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
 print("=== MODUS v11 ===")
@@ -453,7 +280,7 @@ end
 
 local ready = 0
 for _,w in pairs(workers) do if w.ready then ready = ready + 1 end end
-print("\nReady: "..ready.."/12\n")
+print("\nReady: "..ready.."/4\n")
 
 local tid = 0
 local function task(role, t, d)
@@ -493,13 +320,12 @@ while true do
         local resp
         if int == "greeting" then resp = (task("response","generateGreeting",{}) or {}).response
         elseif int == "farewell" then resp = (task("response","generateFarewell",{}) or {}).response
-        elseif int == "how_are_you" then resp = "Great! "..ready.."/12 nodes active. You?"
+        elseif int == "how_are_you" then resp = "Great! "..ready.."/4 nodes active. You?"
         elseif int == "thanks" then resp = (task("response","generateThanks",{}) or {}).response
         elseif int == "about_ai" then resp = (task("response","generateAboutSelf",{}) or {}).response
         elseif int == "joke" then resp = (task("response","generateJoke",{}) or {}).response
         elseif int == "question" then
-            local r = task("knowledge","query",{question=inp})
-            resp = r and r.result and r.result.answer or (task("response","generateContextual",{intent="question"}) or {}).response
+            resp = (task("response","generateContextual",{intent="question"}) or {}).response
         else resp = (task("response","generateContextual",{intent="statement"}) or {}).response end
         task("memory","recordInteraction",{name=user,message=inp,sentiment=sent})
         print("\nMODUS: "..(resp or "..."))
@@ -523,17 +349,9 @@ for i, drv in ipairs(workerDrives) do
     f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
     f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
     f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
-    f = fs.open(drv.path.."/worker_knowledge.lua", "w") f.write(WORKER_KNOWLEDGE) f.close()
     f = fs.open(drv.path.."/worker_memory.lua", "w") f.write(WORKER_MEMORY) f.close()
     f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
     f = fs.open(drv.path.."/worker_personality.lua", "w") f.write(WORKER_PERSONALITY) f.close()
-    f = fs.open(drv.path.."/worker_mood.lua", "w") f.write(WORKER_MOOD) f.close()
-    f = fs.open(drv.path.."/worker_attention.lua", "w") f.write(WORKER_ATTENTION) f.close()
-    f = fs.open(drv.path.."/worker_neural.lua", "w") f.write(WORKER_NEURAL) f.close()
-    f = fs.open(drv.path.."/worker_metacog.lua", "w") f.write(WORKER_METACOG) f.close()
-    f = fs.open(drv.path.."/worker_introspect.lua", "w") f.write(WORKER_INTROSPECT) f.close()
-    f = fs.open(drv.path.."/worker_philosophy.lua", "w") f.write(WORKER_PHILOSOPHY) f.close()
-    f = fs.open(drv.path.."/worker_conversation.lua", "w") f.write(WORKER_CONVERSATION) f.close()
     local c = 0
     for _, df in ipairs(dataFiles) do
         local src = dataLoc[df]
