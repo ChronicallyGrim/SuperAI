@@ -35,17 +35,20 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
--- Prompt user for which drives should be worker drives
-print("Drives connected to master computer will be configured with master startup.")
-print("Select which drives (if any) should be prepared as worker drives:")
+-- Automatically assign drives based on naming convention:
+-- disk3 = master drive (gets master startup)  
+-- disk, disk2, disk4, disk5 = worker drives (get worker startup)
+print("Automatically assigning drives:")
+print("  disk3 -> master drive")  
+print("  disk, disk2, disk4, disk5 -> worker drives")
+
 for i, drive in ipairs(masterConnectedDrives) do
-    write("  Use " .. drive.name .. " (" .. drive.path .. ") as worker drive? (y/N): ")
-    local response = read():lower()
-    if response == "y" or response == "yes" then
+    -- Check if this drive should be a worker drive
+    if drive.path == "disk" or drive.path == "disk2" or drive.path == "disk4" or drive.path == "disk5" then
         table.insert(workerDrives, drive)
-        print("    -> Added as worker drive")
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> worker drive")
     else
-        print("    -> Will use master startup")
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive") 
     end
 end
 
