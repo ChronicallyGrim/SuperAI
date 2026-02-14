@@ -11,8 +11,11 @@ local myDrive = disk.getMountPath("back")
 print("Master disk: " .. (myDrive or "NONE"))
 
 -- Find worker drives and computers
+-- IMPORTANT: Only include drives that will be used by worker computers, 
+-- NOT drives connected to this master computer!
 local workerDrives = {}
 local workerComputers = {}
+local masterConnectedDrives = {}  -- Drives connected to master (don't use for workers)
 
 local myID = os.getComputerID()
 for _, name in ipairs(peripheral.getNames()) do
@@ -20,13 +23,29 @@ for _, name in ipairs(peripheral.getNames()) do
     if pType == "drive" and name ~= "back" then
         local path = disk.getMountPath(name)
         if path then
-            table.insert(workerDrives, {name = name, path = path})
+            -- This drive is connected to the master - don't put worker files on it!
+            table.insert(masterConnectedDrives, {name = name, path = path})
+            print("  Master-connected drive: " .. name .. " -> " .. path .. " (SKIPPING)")
         end
     elseif pType == "computer" then
         local cid = peripheral.call(name, "getID")
         if cid ~= myID then
             table.insert(workerComputers, {name = name, id = cid})
         end
+    end
+end
+
+-- Prompt user for which drives should be worker drives
+print("Drives connected to master computer will be configured with master startup.")
+print("Select which drives (if any) should be prepared as worker drives:")
+for i, drive in ipairs(masterConnectedDrives) do
+    write("  Use " .. drive.name .. " (" .. drive.path .. ") as worker drive? (y/N): ")
+    local response = read():lower()
+    if response == "y" or response == "yes" then
+        table.insert(workerDrives, drive)
+        print("    -> Added as worker drive")
+    else
+        print("    -> Will use master startup")
     end
 end
 
@@ -433,6 +452,26 @@ if myDrive then
     f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
 end
 print("  + startup.lua with auto-run")
+
+-- Install master startup on any drives connected to master that are NOT worker drives
+print("\nConfiguring drives connected to master...")
+for _, drive in ipairs(masterConnectedDrives) do
+    local isWorkerDrive = false
+    for _, workerDrive in ipairs(workerDrives) do
+        if drive.name == workerDrive.name then
+            isWorkerDrive = true
+            break
+        end
+    end
+    
+    if not isWorkerDrive then
+        -- This drive stays with master - give it master startup
+        f = fs.open(drive.path.."/startup.lua", "w") 
+        f.write(MASTER_STARTUP) 
+        f.close()
+        print("  " .. drive.path .. ": master startup installed")
+    end
+end
 
 print("\nInstalling workers...")
 for i, drv in ipairs(workerDrives) do
