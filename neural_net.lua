@@ -1359,4 +1359,60 @@ function M.extractResponseFeatures(userMessage, botResponse)
     return features
 end
 
+-- ============================================================================
+-- MASTER_BRAIN.LUA INTERFACE FUNCTIONS
+-- ============================================================================
+
+-- Overload predict function to handle both network prediction and direct message sentiment
+-- This maintains compatibility with existing code while supporting master_brain.lua
+local originalPredict = M.predict
+
+function M.predict(networkOrMessage, input)
+    -- If called with two parameters (network, input), use original function
+    if input ~= nil then
+        return originalPredict(networkOrMessage, input)
+    end
+    
+    -- If called with one parameter (message), do sentiment analysis
+    local message = networkOrMessage
+    if type(message) ~= "string" then
+        return 0  -- Default neutral sentiment
+    end
+    
+    -- Use the sentiment classifier if available
+    if M.sentimentClassifier then
+        local sentiment, confidence = M.classifySentiment(message)
+        if sentiment == "positive" then
+            return confidence or 0.7
+        elseif sentiment == "negative" then
+            return -(confidence or 0.7)
+        else
+            return 0  -- neutral
+        end
+    end
+    
+    -- Fallback: simple sentiment analysis
+    local lower = message:lower()
+    local score = 0
+    
+    -- Positive indicators
+    local positiveWords = {"good", "great", "awesome", "love", "happy", "excellent", "wonderful", "amazing", "perfect", "thank"}
+    for _, word in ipairs(positiveWords) do
+        if lower:find(word) then
+            score = score + 0.1
+        end
+    end
+    
+    -- Negative indicators
+    local negativeWords = {"bad", "hate", "terrible", "sad", "angry", "awful", "horrible", "worst", "sucks"}
+    for _, word in ipairs(negativeWords) do
+        if lower:find(word) then
+            score = score - 0.1
+        end
+    end
+    
+    -- Limit range
+    return math.max(-1, math.min(1, score))
+end
+
 return M

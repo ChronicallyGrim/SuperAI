@@ -2094,4 +2094,56 @@ function M.getTotalRelationships()
     return count
 end
 
+-- ============================================================================
+-- MASTER_BRAIN.LUA INTERFACE FUNCTIONS
+-- ============================================================================
+
+-- Get recent context for a user (expected by master_brain.lua)
+function M.getRecentContext(user)
+    if not user then return {} end
+    
+    local context = {}
+    local userMem = M.getUser(user)
+    
+    if userMem then
+        -- Get recent interactions
+        local recentInteractions = M.getRecentInteractions(user, 5)
+        if recentInteractions then
+            context.recent_interactions = recentInteractions
+        end
+        
+        -- Get user facts
+        local facts = M.getAllUserFacts(user)
+        if facts then
+            context.user_facts = facts
+        end
+        
+        -- Get mood trend
+        local mood = M.getUserMoodTrend(user)
+        if mood then
+            context.mood_trend = mood
+        end
+        
+        -- Get favorite topics
+        local topics = M.getUserFavoriteTopics(user, 3)
+        if topics then
+            context.favorite_topics = topics
+        end
+        
+        -- Get communication style
+        local style = M.getUserCommunicationStyle(user)
+        if style then
+            context.communication_style = style
+        end
+        
+        -- Get relationship quality
+        local relationship = M.getRelationshipQuality(user)
+        if relationship then
+            context.relationship_quality = relationship
+        end
+    end
+    
+    return context
+end
+
 return M
