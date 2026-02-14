@@ -25,7 +25,7 @@ for _, name in ipairs(peripheral.getNames()) do
         if path then
             -- This drive is connected to the master - don't put worker files on it!
             table.insert(masterConnectedDrives, {name = name, path = path})
-            print("  Master-connected drive: " .. name .. " -> " .. path .. " (SKIPPING)")
+            print("  Master-connected drive: " .. name .. " -> " .. path)
         end
     elseif pType == "computer" then
         local cid = peripheral.call(name, "getID")
@@ -35,20 +35,21 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
--- Automatically assign drives based on naming convention:
--- disk3 = master drive (gets master startup)  
--- disk, disk2, disk4, disk5 = worker drives (get worker startup)
-print("Automatically assigning drives:")
-print("  disk3 -> master drive")  
-print("  disk, disk2, disk4, disk5 -> worker drives")
+-- Drive assignment logic:
+-- Only disk3 and local storage are master drives
+-- All drives connected to master computer stay as master drives (no worker files)
+-- Worker drives exist on separate worker computers, not on the master
+print("Drive assignment:")
+print("  disk3 and local storage = master drives")  
+print("  All drives connected to master = master drives (no worker files)")
+print("  Worker drives exist only on separate worker computers")
 
 for i, drive in ipairs(masterConnectedDrives) do
-    -- Check if this drive should be a worker drive
-    if drive.path == "disk" or drive.path == "disk2" or drive.path == "disk4" or drive.path == "disk5" then
-        table.insert(workerDrives, drive)
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> worker drive")
+    -- ALL drives connected to master are master drives - never assign as worker drives
+    if drive.path == "disk3" then
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive (disk3)")
     else
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive") 
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive (connected to master)")
     end
 end
 
@@ -476,25 +477,32 @@ for _, drive in ipairs(masterConnectedDrives) do
     end
 end
 
-print("\nInstalling workers...")
-for i, drv in ipairs(workerDrives) do
-    write("  " .. drv.path .. ": ")
-    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
-    f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
-    f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
-    f = fs.open(drv.path.."/worker_memory.lua", "w") f.write(WORKER_MEMORY) f.close()
-    f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
-    f = fs.open(drv.path.."/worker_personality.lua", "w") f.write(WORKER_PERSONALITY) f.close()
-    local c = 0
-    for _, df in ipairs(dataFiles) do
-        local src = dataLoc[df]
-        if src then
-            if fs.exists(drv.path.."/"..df) then fs.delete(drv.path.."/"..df) end
-            fs.copy(src, drv.path.."/"..df)
-            c = c + 1
+-- No worker drives to install on master computer
+-- Worker computers will have their own drives that get configured when they boot up
+print("\nWorker drive installation:")
+if #workerDrives == 0 then
+    print("  No worker drives on master computer (correct - worker drives exist on worker computers)")
+else
+    print("  Installing worker files on " .. #workerDrives .. " drives...")
+    for i, drv in ipairs(workerDrives) do
+        write("  " .. drv.path .. ": ")
+        f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
+        f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
+        f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
+        f = fs.open(drv.path.."/worker_memory.lua", "w") f.write(WORKER_MEMORY) f.close()
+        f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
+        f = fs.open(drv.path.."/worker_personality.lua", "w") f.write(WORKER_PERSONALITY) f.close()
+        local c = 0
+        for _, df in ipairs(dataFiles) do
+            local src = dataLoc[df]
+            if src then
+                if fs.exists(drv.path.."/"..df) then fs.delete(drv.path.."/"..df) end
+                fs.copy(src, drv.path.."/"..df)
+                c = c + 1
+            end
         end
+        print(c .. " data files")
     end
-    print(c .. " data files")
 end
 
 print("\nRebooting...")
