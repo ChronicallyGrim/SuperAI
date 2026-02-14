@@ -114,19 +114,18 @@ for _, worker in ipairs(allWorkerComputers) do
     -- Deploy via direct connection (requires ComputerCraft Advanced Computer)
     if worker.connected then
         local success = pcall(function()
-            -- Write worker_listener.lua to the worker computer
-            peripheral.call(worker.name, "fs", "open", "worker_listener.lua", "w")
-            local handle = peripheral.call(worker.name, "fs", "open", "worker_listener.lua", "w")
+            -- Write worker_listener.lua to the worker computer using correct API
+            local handle = peripheral.call(worker.name, "fs.open", "worker_listener.lua", "w")
             if handle then
-                peripheral.call(worker.name, "fs", "write", handle, workerListenerContent)
-                peripheral.call(worker.name, "fs", "close", handle)
+                peripheral.call(worker.name, "fs.write", handle, workerListenerContent)
+                peripheral.call(worker.name, "fs.close", handle)
                 
                 -- Start worker_listener.lua on the worker (run in background)
-                peripheral.call(worker.name, "shell", "run", "bg", "worker_listener.lua")
+                peripheral.call(worker.name, "shell.run", "bg", "worker_listener.lua")
                 listenersDeployed = listenersDeployed + 1
                 print("    SUCCESS: Listener deployed and started")
             else
-                print("    ERROR: Could not write to worker filesystem")
+                print("    ERROR: Could not open file handle on worker filesystem")
             end
         end)
         
