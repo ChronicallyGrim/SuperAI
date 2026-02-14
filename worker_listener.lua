@@ -38,7 +38,7 @@ local function handleDiscovery()
             -- Execute installer
             print("Executing installer...")
             local success, error = pcall(function()
-                shell.run(tempFile)
+                dofile(tempFile)
             end)
             
             -- Clean up temp file
