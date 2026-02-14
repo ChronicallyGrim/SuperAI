@@ -248,6 +248,136 @@ local MASTER_BRAIN = [[
 local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","memory","response","personality"}
 for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
 
+-- ============================================================================
+-- USER PREFERENCES AND SETTINGS
+-- ============================================================================
+
+-- Load or create settings file
+local settings = {}
+local settingsFile = "modus_settings.lua"
+
+local function loadSettings()
+    if fs.exists(settingsFile) then
+        local f = fs.open(settingsFile, "r")
+        local content = f.readAll()
+        f.close()
+        local func = loadstring(content)
+        if func then
+            local env = {}
+            setfenv(func, env)
+            func()
+            settings = env.settings or {}
+        end
+    end
+end
+
+local function saveSettings()
+    local f = fs.open(settingsFile, "w")
+    f.write("settings = " .. textutils.serialize(settings))
+    f.close()
+end
+
+-- First-time setup function
+local function firstRunSetup()
+    local needsSetup = false
+    
+    -- Check if we need any setup
+    if not settings.userName or settings.userName == "User" then needsSetup = true end
+    if not settings.botName or settings.botName == "MODUS" then needsSetup = true end
+    if not settings.chatColor or settings.chatColor == colors.white then needsSetup = true end
+    
+    if not needsSetup then return end
+    
+    print("==========================================")
+    print("        Welcome to MODUS v11!")
+    print("==========================================")
+    print("")
+    print("Let's set up your preferences...")
+    print("")
+    
+    -- Get user name
+    if not settings.userName or settings.userName == "User" then
+        write("What should I call you? ")
+        local name = read()
+        if name ~= "" then
+            settings.userName = name
+            print("Nice to meet you, " .. name .. "!")
+        else
+            settings.userName = "User"
+        end
+        print("")
+    end
+    
+    -- Get bot name
+    if not settings.botName or settings.botName == "MODUS" then
+        write("What would you like to call me? (default: MODUS) ")
+        local botName = read()
+        if botName ~= "" then
+            settings.botName = botName
+            print("Cool! You can call me " .. botName .. " then!")
+        else
+            settings.botName = "MODUS"
+        end
+        print("")
+    end
+    
+    -- Get chat color preference
+    if not settings.chatColor or settings.chatColor == colors.white then
+        print("Pick your chat color:")
+        local chatColors = {
+            {name = "white", code = colors.white},
+            {name = "orange", code = colors.orange},
+            {name = "magenta", code = colors.magenta},
+            {name = "lightBlue", code = colors.lightBlue},
+            {name = "yellow", code = colors.yellow},
+            {name = "lime", code = colors.lime},
+            {name = "pink", code = colors.pink},
+            {name = "cyan", code = colors.cyan},
+            {name = "purple", code = colors.purple},
+            {name = "blue", code = colors.blue},
+            {name = "green", code = colors.green},
+            {name = "red", code = colors.red},
+            {name = "lightGray", code = colors.lightGray},
+            {name = "gray", code = colors.gray},
+        }
+        
+        -- Display in 2 columns
+        for i = 1, #chatColors, 2 do
+            local left = i .. ")" .. chatColors[i].name
+            local right = ""
+            if chatColors[i+1] then
+                right = (i+1) .. ")" .. chatColors[i+1].name
+            end
+            left = left .. string.rep(" ", 18 - #left)
+            print(left .. right)
+        end
+        
+        write("Number: ")
+        local choice = tonumber(read())
+        
+        if choice and chatColors[choice] then
+            settings.chatColor = chatColors[choice].code
+            print("")
+            print("Great choice!")
+        else
+            settings.chatColor = colors.cyan  -- Default fallback
+        end
+        print("")
+    end
+    
+    saveSettings()
+    print("Setup complete! Starting MODUS...")
+    print("")
+end
+
+-- Load settings on startup
+loadSettings()
+
+-- Set defaults if missing
+if not settings.userName then settings.userName = "User" end
+if not settings.botName then settings.botName = "MODUS" end
+if not settings.chatColor then settings.chatColor = colors.white end
+
 print("=== MODUS v11 ===")
 local myMasterID = os.getComputerID()
 local comps = {}
@@ -282,6 +412,9 @@ local ready = 0
 for _,w in pairs(workers) do if w.ready then ready = ready + 1 end end
 print("\nReady: "..ready.."/4\n")
 
+-- Run first-time setup if needed
+firstRunSetup()
+
 local tid = 0
 local function task(role, t, d)
     local w = workers[role]
@@ -307,13 +440,30 @@ local function intent(t)
     return "statement"
 end
 
-local user = "User"
+print("Great! I'm ready to chat. Type anything!")
+print("(Type 'quit' to stop, 'status' for worker status, 'settings' to change preferences)")
+print("")
+
+local user = settings.userName or "User"
 while true do
+    if term and term.setTextColor then term.setTextColor(colors.white) end
     write(user.."> ")
     local inp = read()
     if inp == "quit" then break
-    elseif inp == "status" then for r,w in pairs(workers) do print(r..": "..(w.ready and "OK" or "DOWN")) end
-    elseif inp:match("^name ") then user = inp:sub(6); print("Hi "..user.."!")
+    elseif inp == "status" then 
+        for r,w in pairs(workers) do print(r..": "..(w.ready and "OK" or "DOWN")) end
+    elseif inp == "settings" then
+        -- Reset settings and re-run setup
+        settings.userName = "User"
+        settings.botName = "MODUS" 
+        settings.chatColor = colors.white
+        firstRunSetup()
+        user = settings.userName
+    elseif inp:match("^name ") then 
+        user = inp:sub(6)
+        settings.userName = user
+        saveSettings()
+        print("Hi "..user.."!")
     elseif inp ~= "" then
         local int = intent(inp)
         local sent = (task("language","analyze",{text=inp}) or {}).sentiment or 0
@@ -328,7 +478,10 @@ while true do
             resp = (task("response","generateContextual",{intent="question"}) or {}).response
         else resp = (task("response","generateContextual",{intent="statement"}) or {}).response end
         task("memory","recordInteraction",{name=user,message=inp,sentiment=sent})
-        print("\nMODUS: "..(resp or "..."))
+        
+        if term and term.setTextColor then term.setTextColor(settings.chatColor or colors.cyan) end
+        print("\n"..(settings.botName or "MODUS")..": "..(resp or "..."))
+        if term and term.setTextColor then term.setTextColor(colors.lightGray) end
         print("["..int.." | "..string.format("%.1f",sent).."]\n")
     end
 end
