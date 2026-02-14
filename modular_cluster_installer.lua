@@ -99,6 +99,12 @@ while true do
 end
 
 print("Worker Discovery Complete: " .. #workerComputers .. " workers found")
+if #workerComputers > 0 then
+    print("Available workers:")
+    for i, worker in ipairs(workerComputers) do
+        print("  [" .. i .. "] Worker ID " .. worker.id .. (worker.network and " (network)" or " (direct)"))
+    end
+end
 print("")
 
 -- Download required data files for master
@@ -187,11 +193,31 @@ end
 local diskPath = findMyDisk()
 if not diskPath then
     print("ERROR: No disk found! Expected: ]] .. role.drive .. [[")
+    print("Available disks:")
+    for _, side in ipairs({"back","front","left","right","top","bottom"}) do
+        if peripheral.getType(side) == "drive" then
+            local path = disk.getMountPath(side)
+            if path then
+                print("  " .. side .. " -> " .. path)
+            end
+        end
+    end
     return
 end
 
 print("Using disk: " .. diskPath)
 print("")
+
+-- Ensure disk directory exists and is writable
+if not fs.exists(diskPath) then
+    print("ERROR: Disk path " .. diskPath .. " does not exist!")
+    return
+end
+
+if fs.isReadOnly(diskPath) then
+    print("ERROR: Disk " .. diskPath .. " is read-only!")
+    return
+end
 
 -- Download worker-specific data files
 local requiredFiles = {]] .. textutils.serialize(role.files) .. [[}
@@ -200,13 +226,19 @@ for _, file in ipairs(requiredFiles) do
     write("  " .. file .. "... ")
     local r = http.get(GITHUB .. file)
     if r then
-        local f = fs.open(diskPath .. "/" .. file, "w")
-        f.write(r.readAll())
-        f.close()
-        r.close()
-        print("OK")
+        local filepath = fs.combine(diskPath, file)
+        local f = fs.open(filepath, "w")
+        if f then
+            f.write(r.readAll())
+            f.close()
+            r.close()
+            print("OK")
+        else
+            r.close()
+            print("FAILED - Cannot write to " .. filepath)
+        end
     else
-        print("FAILED")
+        print("FAILED - HTTP error")
     end
 end
 
@@ -217,13 +249,19 @@ for _, module in ipairs(modules) do
     write("  " .. module .. "... ")
     local r = http.get(GITHUB .. module)
     if r then
-        local f = fs.open(diskPath .. "/" .. module, "w")
-        f.write(r.readAll())
-        f.close()
-        r.close()
-        print("OK")
+        local filepath = fs.combine(diskPath, module)
+        local f = fs.open(filepath, "w")
+        if f then
+            f.write(r.readAll())
+            f.close()
+            r.close()
+            print("OK")
+        else
+            r.close()
+            print("FAILED - Cannot write to " .. filepath)
+        end
     else
-        print("FAILED")
+        print("FAILED - HTTP error")
     end
 end
 
@@ -245,7 +283,7 @@ end
 local d = findMyDisk()
 if d then shell.run(d.."/worker_main.lua") else print("worker_main.lua not found!") end
 ]]
-    installer = installer .. [[local f = fs.open(diskPath .. "/startup.lua", "w")
+    installer = installer .. [[local f = fs.open(fs.combine(diskPath, "startup.lua"), "w")
 f.write(]] .. textutils.serialize(startupCode) .. [[)
 f.close()
 print("  startup.lua installed")
@@ -299,7 +337,7 @@ while true do
     end
 end
 ]]
-    installer = installer .. [[f = fs.open(diskPath .. "/worker_main.lua", "w")
+    installer = installer .. [[f = fs.open(fs.combine(diskPath, "worker_main.lua"), "w")
 f.write(]] .. textutils.serialize(mainCode) .. [[)
 f.close()
 print("  worker_main.lua installed")
@@ -440,16 +478,16 @@ print("")
 print("Deploying worker installers...")
 local installResults = {}
 
-for _, role in ipairs(WORKER_ROLES) do
+for i, role in ipairs(WORKER_ROLES) do
     print("Deploying " .. role.name .. " worker installer...")
     
     -- Generate installer script
     local installerScript = generateWorkerInstaller(role)
     
-    -- Find target worker computer for this role
+    -- Find target worker computer for this role (use sequential index, not role.id)
     local targetWorker = nil
-    if #workerComputers >= role.id then
-        targetWorker = workerComputers[role.id]
+    if #workerComputers >= i then
+        targetWorker = workerComputers[i]
     end
     
     if targetWorker then
