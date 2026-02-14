@@ -594,7 +594,7 @@ local function firstRunSetup()
     
     if not settings.userName or settings.userName == "User" then needsSetup = true end
     if not settings.botName or settings.botName == "MODUS" then needsSetup = true end
-    if not settings.chatColor or settings.chatColor == colors.white then needsSetup = true end
+    if not settings.chatColor then needsSetup = true end
     
     if not needsSetup then return end
     
@@ -633,7 +633,7 @@ local function firstRunSetup()
     end
     
     -- Get chat color preference  
-    if not settings.chatColor or settings.chatColor == colors.white then
+    if not settings.chatColor then
         print("Pick your chat color:")
         local chatColors = {
             {name = "white", code = colors.white},
@@ -784,7 +784,7 @@ function M.run()
     -- Set defaults
     if not settings.userName then settings.userName = "User" end
     if not settings.botName then settings.botName = "MODUS" end
-    if not settings.chatColor then settings.chatColor = colors.cyan end
+    if not settings.chatColor then settings.chatColor = nil end  -- Force first-time setup
     
     BOT_NAME = settings.botName
     
@@ -803,9 +803,24 @@ function M.run()
     
     -- Main conversation loop
     while true do
-        if term and term.setTextColor then term.setTextColor(colors.white) end
+        -- Safe color setting
+        pcall(function()
+            if term and term.setTextColor then 
+                term.setTextColor(colors.white) 
+            end
+        end)
+        
         write(user .. "> ")
-        local input = read()
+        
+        -- Safe input reading
+        local input
+        local success, result = pcall(read)
+        if success then
+            input = result
+        else
+            print("Input error: " .. tostring(result))
+            break
+        end
         
         if input == "quit" then 
             break
@@ -831,7 +846,7 @@ function M.run()
             end
             
         elseif input == "settings" then
-            -- Reset settings to trigger setup without forcing white color
+            -- Reset settings to trigger setup
             settings.userName = "User"
             settings.botName = "MODUS"
             settings.chatColor = nil  -- Force re-prompt for color choice
@@ -854,16 +869,32 @@ function M.run()
             print("Hi " .. user .. "!")
             
         elseif input ~= "" then
-            local response, intent, confidence = interpret(input, user)
+            -- Safe message processing
+            local success, response, intent, confidence = pcall(interpret, input, user)
             
-            if term and term.setTextColor then 
-                term.setTextColor(settings.chatColor or colors.cyan) 
+            if not success then
+                print("Processing error: " .. tostring(response))
+                response = "Sorry, I encountered an error processing that message."
+                intent = "error"
+                confidence = 0
             end
+            
+            -- Safe color setting for response
+            pcall(function()
+                if term and term.setTextColor then 
+                    term.setTextColor(settings.chatColor or colors.cyan) 
+                end
+            end)
+            
             print("\n" .. BOT_NAME .. ": " .. (response or "..."))
             
             if DEBUG_MODE then
-                if term and term.setTextColor then term.setTextColor(colors.lightGray) end
-                print("[" .. intent .. " | conf:" .. string.format("%.2f", confidence) .. "]\n")
+                pcall(function()
+                    if term and term.setTextColor then 
+                        term.setTextColor(colors.lightGray) 
+                    end
+                end)
+                print("[" .. intent .. " | conf:" .. string.format("%.2f", confidence or 0) .. "]\n")
             else
                 print("")
             end
