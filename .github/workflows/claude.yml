@@ -29,11 +29,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git for pushing
+        run: |
+          git config user.name "claude[bot]"
+          git config user.email "claude[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
 
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: '--allowedTools "Edit,Write,Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git checkout:*),Bash(gh pr create:*)"'
+          claude_args: '--allowedTools "Edit,Write,MultiEdit,Glob,Grep,Read,Bash(git:*),Bash(gh:*)"'
