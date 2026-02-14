@@ -58,25 +58,107 @@ local myDrive = disk.getMountPath("back")
 print("Master Computer ID: " .. myID)
 print("Master Drive: " .. (myDrive or "NONE"))
 
--- Find worker computers in network
-local workerComputers = {}
-print("\nDiscovering worker computers...")
+-- Step 1: Deploy worker_listener.lua to all worker computers
+print("\n=== STEP 1: AUTOMATIC WORKER PREPARATION ===")
+print("Deploying worker_listener.lua to all worker computers...")
+
+-- Find all worker computers via direct connection
+local allWorkerComputers = {}
 for _, name in ipairs(peripheral.getNames()) do
     local pType = peripheral.getType(name)
     if pType == "computer" then
         local cid = peripheral.call(name, "getID")
         if cid ~= myID then
-            table.insert(workerComputers, {name = name, id = cid, connected = true})
+            table.insert(allWorkerComputers, {name = name, id = cid, connected = true})
             print("  Found worker computer: ID " .. cid .. " (" .. name .. ")")
         end
     end
 end
 
--- Also discover workers via network ping
-print("  Pinging for network workers...")
+if #allWorkerComputers == 0 then
+    print("ERROR: No worker computers found! Check network connections.")
+    return
+end
+
+-- Download worker_listener.lua content
+local workerListenerContent = nil
+if fs.exists("worker_listener.lua") then
+    print("Reading local worker_listener.lua...")
+    local f = fs.open("worker_listener.lua", "r")
+    workerListenerContent = f.readAll()
+    f.close()
+else
+    print("Downloading worker_listener.lua from GitHub...")
+    local r = http.get(GITHUB .. "worker_listener.lua")
+    if r then
+        workerListenerContent = r.readAll()
+        r.close()
+        -- Save local copy for future use
+        local f = fs.open("worker_listener.lua", "w")
+        f.write(workerListenerContent)
+        f.close()
+        print("  worker_listener.lua cached locally")
+    else
+        print("ERROR: Could not download worker_listener.lua!")
+        return
+    end
+end
+
+-- Deploy worker_listener.lua to each worker computer
+print("Deploying listeners to " .. #allWorkerComputers .. " workers...")
+local listenersDeployed = 0
+
+for _, worker in ipairs(allWorkerComputers) do
+    print("  Deploying to Worker " .. worker.id .. "...")
+    
+    -- Deploy via direct connection (requires ComputerCraft Advanced Computer)
+    if worker.connected then
+        local success = pcall(function()
+            -- Write worker_listener.lua to the worker computer
+            peripheral.call(worker.name, "fs", "open", "worker_listener.lua", "w")
+            local handle = peripheral.call(worker.name, "fs", "open", "worker_listener.lua", "w")
+            if handle then
+                peripheral.call(worker.name, "fs", "write", handle, workerListenerContent)
+                peripheral.call(worker.name, "fs", "close", handle)
+                
+                -- Start worker_listener.lua on the worker (run in background)
+                peripheral.call(worker.name, "shell", "run", "bg", "worker_listener.lua")
+                listenersDeployed = listenersDeployed + 1
+                print("    SUCCESS: Listener deployed and started")
+            else
+                print("    ERROR: Could not write to worker filesystem")
+            end
+        end)
+        
+        if not success then
+            print("    ERROR: Direct deployment failed, trying network method...")
+            -- Fallback: Try network deployment (requires worker to already be listening)
+            rednet.send(worker.id, {
+                type = "deploy_file",
+                filename = "worker_listener.lua",
+                content = workerListenerContent,
+                execute = true
+            }, "MODUS_DEPLOY")
+        end
+    end
+end
+
+print("Listeners deployed: " .. listenersDeployed .. "/" .. #allWorkerComputers)
+
+-- Wait for workers to start their listeners
+print("Waiting for workers to initialize listeners...")
+sleep(5)
+
+-- Step 2: Discover ready worker computers
+local workerComputers = {}
+print("\n=== STEP 2: WORKER DISCOVERY ===")
+print("Discovering ready worker computers...")
+
+-- Ping for workers with active listeners
 rednet.broadcast({type = "discover", master_id = myID}, PROTOCOL)
 local pingResponses = 0
-local timeout = os.startTimer(3)
+local timeout = os.startTimer(10) -- Longer timeout for worker initialization
+
 while true do
     local event, id, senderID, message, protocol = os.pullEvent()
     if event == "timer" and id == timeout then
@@ -86,15 +168,14 @@ while true do
         for _, worker in ipairs(workerComputers) do
             if worker.id == senderID then
                 found = true
-                worker.network = true
                 break
             end
         end
         if not found then
             table.insert(workerComputers, {id = senderID, network = true, connected = false})
-            print("  Network worker found: ID " .. senderID)
+            print("  Ready worker found: ID " .. senderID)
+            pingResponses = pingResponses + 1
         end
-        pingResponses = pingResponses + 1
     end
 end
 
@@ -474,8 +555,9 @@ end
 
 print("")
 
--- Deploy worker installers
-print("Deploying worker installers...")
+-- Step 3: Deploy role-specific worker installers
+print("\n=== STEP 3: ROLE-SPECIFIC DEPLOYMENT ===")
+print("Deploying specialized worker installers...")
 local installResults = {}
 
 for i, role in ipairs(WORKER_ROLES) do
