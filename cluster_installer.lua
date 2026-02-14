@@ -90,16 +90,45 @@ end
 -- ============ FILE CONTENTS ============
 
 local MASTER_STARTUP = [[
-local function findDisk()
+-- Auto-startup for enhanced master_brain.lua
+-- This runs automatically after reboot on the advanced computer
+
+local function findMasterBrain()
+    -- Try local directory first
+    if fs.exists("master_brain.lua") then 
+        return "master_brain.lua" 
+    end
+    
+    -- Try backup location
+    if fs.exists("master_brain_backup.lua") then
+        return "master_brain_backup.lua"
+    end
+    
+    -- Try disk locations
     local p = disk.getMountPath("back")
-    if p and fs.exists(p.."/master_brain.lua") then return p end
+    if p and fs.exists(p.."/master_brain.lua") then 
+        return p.."/master_brain.lua" 
+    end
+    
     for i = 1, 10 do
         local try = "disk" .. (i > 1 and i or "")
-        if fs.exists(try.."/master_brain.lua") then return try end
+        if fs.exists(try.."/master_brain.lua") then 
+            return try.."/master_brain.lua" 
+        end
     end
+    
+    return nil
 end
-local d = findDisk()
-if d then shell.run(d.."/master_brain.lua") else print("master_brain.lua not found!") end
+
+print("=== MODUS Enhanced Auto-Startup ===")
+local masterPath = findMasterBrain()
+if masterPath then 
+    print("Starting enhanced master_brain from: " .. masterPath)
+    shell.run(masterPath)
+else 
+    print("ERROR: master_brain.lua not found!")
+    print("Please run cluster_installer.lua to install the system.")
+end
 ]]
 
 -- Worker startup: search ALL sides for a disk with worker_main.lua
@@ -244,257 +273,35 @@ function M.getPersonality(d) return {personality = pers and pers.getPersonalityS
 return M
 ]]
 
-local MASTER_BRAIN = [[
-local PROTOCOL, workers, roles = "MODUS_CLUSTER", {}, {"language","memory","response","personality"}
-for _, n in ipairs(peripheral.getNames()) do if peripheral.getType(n)=="modem" then rednet.open(n) end end
-
--- ============================================================================
--- USER PREFERENCES AND SETTINGS
--- ============================================================================
-
--- Load or create settings file
-local settings = {}
-local settingsFile = "modus_settings.lua"
-
-local function loadSettings()
-    if fs.exists(settingsFile) then
-        local f = fs.open(settingsFile, "r")
-        local content = f.readAll()
-        f.close()
-        local func = loadstring(content)
-        if func then
-            local env = {}
-            setfenv(func, env)
-            func()
-            settings = env.settings or {}
-        end
-    end
-end
-
-local function saveSettings()
-    local f = fs.open(settingsFile, "w")
-    f.write("settings = " .. textutils.serialize(settings))
-    f.close()
-end
-
--- First-time setup function
-local function firstRunSetup()
-    local needsSetup = false
-    
-    -- Check if we need any setup
-    if not settings.userName or settings.userName == "User" then needsSetup = true end
-    if not settings.botName or settings.botName == "MODUS" then needsSetup = true end
-    if not settings.chatColor or settings.chatColor == colors.white then needsSetup = true end
-    
-    if not needsSetup then return end
-    
-    print("==========================================")
-    print("        Welcome to MODUS v11!")
-    print("==========================================")
-    print("")
-    print("Let's set up your preferences...")
-    print("")
-    
-    -- Get user name
-    if not settings.userName or settings.userName == "User" then
-        write("What should I call you? ")
-        local name = read()
-        if name ~= "" then
-            settings.userName = name
-            print("Nice to meet you, " .. name .. "!")
-        else
-            settings.userName = "User"
-        end
-        print("")
-    end
-    
-    -- Get bot name
-    if not settings.botName or settings.botName == "MODUS" then
-        write("What would you like to call me? (default: MODUS) ")
-        local botName = read()
-        if botName ~= "" then
-            settings.botName = botName
-            print("Cool! You can call me " .. botName .. " then!")
-        else
-            settings.botName = "MODUS"
-        end
-        print("")
-    end
-    
-    -- Get chat color preference
-    if not settings.chatColor or settings.chatColor == colors.white then
-        print("Pick your chat color:")
-        local chatColors = {
-            {name = "white", code = colors.white},
-            {name = "orange", code = colors.orange},
-            {name = "magenta", code = colors.magenta},
-            {name = "lightBlue", code = colors.lightBlue},
-            {name = "yellow", code = colors.yellow},
-            {name = "lime", code = colors.lime},
-            {name = "pink", code = colors.pink},
-            {name = "cyan", code = colors.cyan},
-            {name = "purple", code = colors.purple},
-            {name = "blue", code = colors.blue},
-            {name = "green", code = colors.green},
-            {name = "red", code = colors.red},
-            {name = "lightGray", code = colors.lightGray},
-            {name = "gray", code = colors.gray},
-        }
-        
-        -- Display in 2 columns
-        for i = 1, #chatColors, 2 do
-            local left = i .. ")" .. chatColors[i].name
-            local right = ""
-            if chatColors[i+1] then
-                right = (i+1) .. ")" .. chatColors[i+1].name
-            end
-            left = left .. string.rep(" ", 18 - #left)
-            print(left .. right)
-        end
-        
-        write("Number: ")
-        local choice = tonumber(read())
-        
-        if choice and chatColors[choice] then
-            settings.chatColor = chatColors[choice].code
-            print("")
-            print("Great choice!")
-        else
-            settings.chatColor = colors.cyan  -- Default fallback
-        end
-        print("")
-    end
-    
-    saveSettings()
-    print("Setup complete! Starting MODUS...")
-    print("")
-end
-
--- Load settings on startup
-loadSettings()
-
--- Set defaults if missing
-if not settings.userName then settings.userName = "User" end
-if not settings.botName then settings.botName = "MODUS" end
-if not settings.chatColor then settings.chatColor = colors.white end
-
-print("=== MODUS v11 ===")
-local myMasterID = os.getComputerID()
-local comps = {}
-for _, n in ipairs(peripheral.getNames()) do
-    if peripheral.getType(n) == "computer" then
-        local cid = peripheral.call(n,"getID")
-        if cid ~= myMasterID then table.insert(comps, {name=n, id=cid}) end
-    end
-end
-
-print("Assigning roles...")
-for i, c in ipairs(comps) do
-    local role = roles[i]
-    if role then
-        peripheral.call(c.name, "turnOn")
-        sleep(0.5)
-        rednet.send(c.id, {type="assign_role", role=role}, PROTOCOL)
-        local dl = os.clock() + 4
-        while os.clock() < dl do
-            local sid, msg = rednet.receive(PROTOCOL, 0.5)
-            if sid == c.id and msg and msg.type == "role_ack" then
-                workers[role] = {id=c.id, ready=msg.ok}
-                print("  "..role:upper()..": "..(msg.ok and "OK" or "ERR"))
-                break
-            end
-        end
-        if not workers[role] then workers[role] = {id=c.id, ready=false}; print("  "..role:upper()..": TIMEOUT") end
-    end
-end
-
-local ready = 0
-for _,w in pairs(workers) do if w.ready then ready = ready + 1 end end
-print("\nReady: "..ready.."/4\n")
-
--- Run first-time setup if needed
-firstRunSetup()
-
-local tid = 0
-local function task(role, t, d)
-    local w = workers[role]
-    if not w or not w.ready then return nil end
-    tid = tid + 1
-    rednet.send(w.id, {type="task", task=t, taskId=tid, data=d or {}}, PROTOCOL)
-    local dl = os.clock() + 2
-    while os.clock() < dl do
-        local _, msg = rednet.receive(PROTOCOL, 0.3)
-        if msg and msg.taskId == tid then return msg.result end
-    end
-end
-
-local function intent(t)
-    local l = t:lower()
-    if l:match("^h[ie]") or l:match("^hey") then return "greeting" end
-    if l:match("bye") then return "farewell" end
-    if l:match("how are") then return "how_are_you" end
-    if l:match("thank") then return "thanks" end
-    if l:match("who are") or l:match("what are you") then return "about_ai" end
-    if l:match("joke") then return "joke" end
-    if l:match("%?$") then return "question" end
-    return "statement"
-end
-
-print("Great! I'm ready to chat. Type anything!")
-print("(Type 'quit' to stop, 'status' for worker status, 'settings' to change preferences)")
-print("")
-
-local user = settings.userName or "User"
-while true do
-    if term and term.setTextColor then term.setTextColor(colors.white) end
-    write(user.."> ")
-    local inp = read()
-    if inp == "quit" then break
-    elseif inp == "status" then 
-        for r,w in pairs(workers) do print(r..": "..(w.ready and "OK" or "DOWN")) end
-    elseif inp == "settings" then
-        -- Reset settings and re-run setup
-        settings.userName = "User"
-        settings.botName = "MODUS" 
-        settings.chatColor = colors.white
-        firstRunSetup()
-        user = settings.userName
-    elseif inp:match("^name ") then 
-        user = inp:sub(6)
-        settings.userName = user
-        saveSettings()
-        print("Hi "..user.."!")
-    elseif inp ~= "" then
-        local int = intent(inp)
-        local sent = (task("language","analyze",{text=inp}) or {}).sentiment or 0
-        local resp
-        if int == "greeting" then resp = (task("response","generateGreeting",{}) or {}).response
-        elseif int == "farewell" then resp = (task("response","generateFarewell",{}) or {}).response
-        elseif int == "how_are_you" then resp = "Great! "..ready.."/4 nodes active. You?"
-        elseif int == "thanks" then resp = (task("response","generateThanks",{}) or {}).response
-        elseif int == "about_ai" then resp = (task("response","generateAboutSelf",{}) or {}).response
-        elseif int == "joke" then resp = (task("response","generateJoke",{}) or {}).response
-        elseif int == "question" then
-            resp = (task("response","generateContextual",{intent="question"}) or {}).response
-        else resp = (task("response","generateContextual",{intent="statement"}) or {}).response end
-        task("memory","recordInteraction",{name=user,message=inp,sentiment=sent})
-        
-        if term and term.setTextColor then term.setTextColor(settings.chatColor or colors.cyan) end
-        print("\n"..(settings.botName or "MODUS")..": "..(resp or "..."))
-        if term and term.setTextColor then term.setTextColor(colors.lightGray) end
-        print("["..int.." | "..string.format("%.1f",sent).."]\n")
-    end
-end
-for _,w in pairs(workers) do rednet.send(w.id,{type="shutdown"},PROTOCOL) end
-]]
+-- Enhanced master_brain.lua will be copied from standalone file
 
 -- ============ INSTALL ============
 
-print("Installing master...")
-local f = fs.open(myDrive.."/master_brain.lua", "w") f.write(MASTER_BRAIN) f.close()
-f = fs.open("startup.lua", "w") f.write(MASTER_STARTUP) f.close()
-f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
-print("  + master_brain.lua + startup.lua")
+print("Installing enhanced master...")
+
+-- Copy the enhanced master_brain.lua from current directory to the master disk
+if fs.exists("master_brain.lua") then
+    if myDrive then
+        fs.copy("master_brain.lua", myDrive.."/master_brain.lua")
+        print("  + Enhanced master_brain.lua copied to " .. myDrive)
+    end
+    
+    -- Also copy to local directory for auto-startup
+    if fs.exists("master_brain.lua") and not fs.exists("master_brain_backup.lua") then
+        fs.copy("master_brain.lua", "master_brain_backup.lua")
+    end
+    
+    print("  + Enhanced master_brain.lua installed")
+else
+    print("  ERROR: master_brain.lua not found! Please ensure it's in the same directory.")
+end
+
+-- Install startup scripts with auto-run functionality
+local f = fs.open("startup.lua", "w") f.write(MASTER_STARTUP) f.close()
+if myDrive then
+    f = fs.open(myDrive.."/startup.lua", "w") f.write(MASTER_STARTUP) f.close()
+end
+print("  + startup.lua with auto-run")
 
 print("\nInstalling workers...")
 for i, drv in ipairs(workerDrives) do
