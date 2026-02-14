@@ -144,36 +144,50 @@ end
 
 print("Listeners deployed: " .. listenersDeployed .. "/" .. #allWorkerComputers)
 
--- Wait for workers to start their listeners
-print("Waiting for workers to initialize listeners...")
-sleep(5)
+-- Wait for workers to start their listeners and stabilize network
+print("Waiting for workers to initialize listeners and stabilize network...")
+sleep(8) -- Extended initialization time for proper network setup
 
 -- Step 2: Discover ready worker computers
 local workerComputers = {}
 print("\n=== STEP 2: WORKER DISCOVERY ===")
 print("Discovering ready worker computers...")
 
--- Ping for workers with active listeners
+-- Ping for workers with active listeners  
+print("Broadcasting discovery message to all workers on protocol " .. PROTOCOL)
 rednet.broadcast({type = "discover", master_id = myID}, PROTOCOL)
 local pingResponses = 0
-local timeout = os.startTimer(10) -- Longer timeout for worker initialization
+local timeout = os.startTimer(20) -- Extended timeout for worker initialization and network stabilization
+local discoveryStart = os.clock()
+
+print("Listening for worker responses for 20 seconds...")
 
 while true do
     local event, id, senderID, message, protocol = os.pullEvent()
+    
     if event == "timer" and id == timeout then
+        print("Discovery timeout reached after " .. math.floor(os.clock() - discoveryStart) .. " seconds")
         break
-    elseif event == "rednet_message" and protocol == PROTOCOL and message.type == "worker_available" then
-        local found = false
-        for _, worker in ipairs(workerComputers) do
-            if worker.id == senderID then
-                found = true
-                break
+    elseif event == "rednet_message" then
+        print("Received message from " .. (senderID or "unknown") .. " on protocol " .. (protocol or "none"))
+        
+        if protocol == PROTOCOL and message and message.type == "worker_available" then
+            local found = false
+            for _, worker in ipairs(workerComputers) do
+                if worker.id == senderID then
+                    found = true
+                    break
+                end
             end
-        end
-        if not found then
-            table.insert(workerComputers, {id = senderID, network = true, connected = false})
-            print("  Ready worker found: ID " .. senderID)
-            pingResponses = pingResponses + 1
+            if not found then
+                table.insert(workerComputers, {id = senderID, network = true, connected = false})
+                print("  Ready worker found: ID " .. senderID)
+                pingResponses = pingResponses + 1
+            else
+                print("  Duplicate response from worker " .. senderID .. " (ignored)")
+            end
+        else
+            print("  Message not a worker_available response (type: " .. (message and message.type or "nil") .. ")")
         end
     end
 end
@@ -582,28 +596,41 @@ for i, role in ipairs(WORKER_ROLES) do
             master_id = myID
         }
         
+        print("  Sending installer script (" .. string.len(installerScript) .. " bytes) to Worker " .. targetWorker.id)
         rednet.send(targetWorker.id, deployMsg, PROTOCOL)
         
-        -- Wait for installation completion
-        local timeout = os.startTimer(60) -- 60 second timeout
+        -- Wait for installation completion with detailed debugging
+        local timeout = os.startTimer(120) -- Extended 120 second timeout for complex installations
         local installComplete = false
+        local startTime = os.clock()
+        
+        print("  Waiting for installation completion...")
         
         while not installComplete do
             local event, id, senderID, message, protocol = os.pullEvent()
             
             if event == "timer" and id == timeout then
-                print("  TIMEOUT: Installation did not complete")
+                print("  TIMEOUT: Installation did not complete after " .. math.floor(os.clock() - startTime) .. " seconds")
+                print("  No response from Worker " .. targetWorker.id .. " for role " .. role.name)
                 installResults[role.name] = {success = false, reason = "timeout"}
                 break
-            elseif event == "rednet_message" and protocol == PROTOCOL and senderID == targetWorker.id then
-                if message.type == "install_complete" and message.role == role.name then
-                    print("  SUCCESS: Installation completed")
-                    installResults[role.name] = {success = true, worker = targetWorker.id}
-                    installComplete = true
-                elseif message.type == "install_error" then
-                    print("  ERROR: " .. (message.error or "unknown error"))
-                    installResults[role.name] = {success = false, reason = message.error}
-                    installComplete = true
+            elseif event == "rednet_message" then
+                print("  Received message from " .. (senderID or "unknown") .. " on protocol " .. (protocol or "none"))
+                
+                if protocol == PROTOCOL and senderID == targetWorker.id then
+                    if message and message.type == "install_complete" and message.role == role.name then
+                        print("  SUCCESS: Installation completed after " .. math.floor(os.clock() - startTime) .. " seconds")
+                        installResults[role.name] = {success = true, worker = targetWorker.id}
+                        installComplete = true
+                    elseif message and message.type == "install_error" then
+                        print("  ERROR: " .. (message.error or "unknown error"))
+                        installResults[role.name] = {success = false, reason = message.error}
+                        installComplete = true
+                    else
+                        print("  Unexpected message type: " .. (message and message.type or "nil"))
+                    end
+                else
+                    print("  Message not for us (wrong protocol or sender)")
                 end
             end
         end
