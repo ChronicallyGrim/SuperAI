@@ -21,9 +21,15 @@ end
 local function handleDiscovery()
     while true do
         local senderID, message, protocol = rednet.receive(PROTOCOL, 1)
+        
+        if senderID then
+            print("Received message from " .. senderID .. " on protocol " .. (protocol or "unknown"))
+        end
+        
         if message and message.type == "discover" then
+            print("Discovery ping received from master " .. senderID)
             rednet.send(senderID, {type = "worker_available", id = os.getComputerID()}, PROTOCOL)
-            print("Responded to discovery from master " .. senderID)
+            print("Sent worker_available response to master " .. senderID)
         elseif message and message.type == "deploy_installer" then
             print("")
             print("Installer received for role: " .. message.role)
@@ -64,7 +70,20 @@ local function handleDiscovery()
                 }, PROTOCOL)
             end
             
-            return -- Exit after handling installer
+            -- Wait for any additional commands or reboot signal
+            print("Waiting for reboot signal or additional commands...")
+            local rebootTimeout = os.startTimer(60)
+            
+            while true do
+                local event, id, senderID, msg, protocol = os.pullEvent()
+                if event == "timer" and id == rebootTimeout then
+                    print("Reboot timeout reached, exiting listener...")
+                    return
+                elseif event == "rednet_message" and protocol == PROTOCOL and msg.type == "reboot_now" then
+                    print("Reboot signal received, exiting listener...")
+                    return
+                end
+            end
         end
     end
 end
