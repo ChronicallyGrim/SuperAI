@@ -281,7 +281,7 @@ local memory = {
     nicknames = {},
     context = {},
     learned = {},
-    chatColor = colors.white,
+    chatColor = nil,  -- nil means not set yet, will trigger first-time setup
     categories = {},
     negative = {},
     facts = {},
@@ -2657,7 +2657,7 @@ local function firstRunSetup()
         end
     end
     
-    if not memory.chatColor or memory.chatColor == colors.white then
+    if not memory.chatColor then
         print("")
         print("Pick your chat color:")
         local chatColors = {
@@ -2723,7 +2723,7 @@ function M.run()
         needsSetup = true
     elseif not memory.nicknames or not memory.nicknames[user] then
         needsSetup = true
-    elseif not memory.chatColor or memory.chatColor == colors.white then
+    elseif not memory.chatColor then
         needsSetup = true
     end
     

@@ -58,26 +58,30 @@ else
 end
 
 -- ============================================================================
--- CHECK FOR MAIN_LOGIC
+-- CHECK FOR MASTER_BRAIN
 -- ============================================================================
 
--- main_logic.lua should be on the TOP drive, not computer root
-local main_logic_path = nil
+-- master_brain.lua should be on the TOP drive, not computer root
+local master_brain_path = nil
 
 -- First check TOP drive
-if top_mount and fs.exists(top_mount .. "/main_logic.lua") then
-    main_logic_path = top_mount .. "/main_logic.lua"
-    print("Loading main_logic from: " .. main_logic_path)
+if top_mount and fs.exists(top_mount .. "/master_brain.lua") then
+    master_brain_path = top_mount .. "/master_brain.lua"
+    print("Loading master_brain from: " .. master_brain_path)
 -- Fallback: check computer root
+elseif fs.exists("master_brain.lua") then
+    master_brain_path = "master_brain.lua"
+    print("Loading master_brain from computer root")
+-- Fallback to main_logic for backwards compatibility
 elseif fs.exists("main_logic.lua") then
-    main_logic_path = "main_logic.lua"
-    print("Loading main_logic from computer root")
+    master_brain_path = "main_logic.lua"
+    print("Loading main_logic from computer root (fallback)")
 else
-    print("ERROR: main_logic.lua not found!")
+    print("ERROR: master_brain.lua not found!")
     if top_mount then
-        print("Checked: " .. top_mount .. "/main_logic.lua")
+        print("Checked: " .. top_mount .. "/master_brain.lua")
     end
-    print("Checked: computer root")
+    print("Checked: computer root for master_brain.lua and main_logic.lua")
     print("Run NewInstaller2 to install SuperAI.")
     return
 end
@@ -88,7 +92,26 @@ end
 print("Starting SuperAI...")
 print("")
 
--- main_logic is a MODULE that returns M with M.run()
--- We need to require it and call run(), not shell.run() it
-local main_logic = require("main_logic")
-main_logic.run()
+-- Load the AI system with error handling
+local success, ai_system = pcall(function()
+    if master_brain_path == "main_logic.lua" then
+        local main_logic = require("main_logic")
+        return main_logic
+    else
+        -- master_brain.lua runs automatically when loaded, so we just need to require it
+        require("master_brain")
+        return nil -- master_brain runs immediately
+    end
+end)
+
+if not success then
+    print("ERROR loading AI system: " .. tostring(ai_system))
+    print("This usually means missing dependencies.")
+    print("Try running the installer or check that all AI modules are present.")
+    return
+end
+
+-- Only run if we got a module back (main_logic case)
+if ai_system and ai_system.run then
+    ai_system.run()
+end

@@ -594,7 +594,7 @@ local function firstRunSetup()
     
     if not settings.userName or settings.userName == "User" then needsSetup = true end
     if not settings.botName or settings.botName == "MODUS" then needsSetup = true end
-    if not settings.chatColor or settings.chatColor == colors.white then needsSetup = true end
+    if not settings.chatColor then needsSetup = true end
     
     if not needsSetup then return end
     
@@ -633,7 +633,7 @@ local function firstRunSetup()
     end
     
     -- Get chat color preference  
-    if not settings.chatColor or settings.chatColor == colors.white then
+    if not settings.chatColor then
         print("Pick your chat color:")
         local chatColors = {
             {name = "white", code = colors.white},
@@ -784,7 +784,7 @@ function M.run()
     -- Set defaults
     if not settings.userName then settings.userName = "User" end
     if not settings.botName then settings.botName = "MODUS" end
-    if not settings.chatColor then settings.chatColor = colors.cyan end
+    -- Don't set chatColor default until after first run setup
     
     BOT_NAME = settings.botName
     
@@ -793,6 +793,9 @@ function M.run()
     
     -- Run first-time setup if needed
     firstRunSetup()
+    
+    -- Set chat color default after setup
+    if not settings.chatColor then settings.chatColor = colors.cyan end
     
     local user = settings.userName or "User"
     
