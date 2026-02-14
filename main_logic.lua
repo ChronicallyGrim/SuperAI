@@ -2620,6 +2620,11 @@ end
 local function firstRunSetup()
     local user = "Player"
     
+    -- Ensure nicknames table exists
+    if not memory.nicknames then
+        memory.nicknames = {}
+    end
+    
     if not memory.nicknames[user] then
         print("")
         write("Before we start, what should I call you? ")
@@ -2634,15 +2639,22 @@ local function firstRunSetup()
         saveMemory()
     end
     
-    print("")
-    write("What would you like to call me? (default: " .. BOT_NAME .. ") ")
-    local botNameInput = read()
-    if botNameInput ~= "" then
-        BOT_NAME = botNameInput
-        memory.botName = botNameInput
+    -- Only ask for bot name if not set or still default
+    if not memory.botName or memory.botName == DEFAULT_BOT_NAME then
         print("")
-        print("Cool! You can call me " .. BOT_NAME .. " then!")
-        saveMemory()
+        write("What would you like to call me? (default: " .. BOT_NAME .. ") ")
+        local botNameInput = read()
+        if botNameInput ~= "" then
+            BOT_NAME = botNameInput
+            memory.botName = botNameInput
+            print("")
+            print("Cool! You can call me " .. BOT_NAME .. " then!")
+            saveMemory()
+        else
+            -- If they just press enter, still save the default to prevent re-asking
+            memory.botName = BOT_NAME
+            saveMemory()
+        end
     end
     
     if not memory.chatColor or memory.chatColor == colors.white then
@@ -2702,7 +2714,20 @@ function M.run()
     print("            Welcome to " .. BOT_NAME .. "!")
     print("==========================================")
     
-    if memory.botName == DEFAULT_BOT_NAME then
+    -- Check for first run or missing user preferences
+    local needsSetup = false
+    local user = "Player"
+    
+    -- Check if we need to run first-time setup
+    if not memory.botName or memory.botName == DEFAULT_BOT_NAME then
+        needsSetup = true
+    elseif not memory.nicknames or not memory.nicknames[user] then
+        needsSetup = true
+    elseif not memory.chatColor or memory.chatColor == colors.white then
+        needsSetup = true
+    end
+    
+    if needsSetup then
         firstRunSetup()
     end
     
