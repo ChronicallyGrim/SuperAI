@@ -94,17 +94,12 @@ local MASTER_STARTUP = [[
 -- This runs automatically after reboot on the advanced computer
 
 local function findMasterBrain()
-    -- Try local computer installation first (primary location after installer runs)
-    if fs.exists("master_brain_local.lua") then 
-        return "master_brain_local.lua" 
-    end
-    
-    -- Try original master_brain.lua in current directory
+    -- Try master_brain.lua in current directory first (primary location - same as startup)
     if fs.exists("master_brain.lua") then 
         return "master_brain.lua" 
     end
     
-    -- Try backup location
+    -- Try backup location in current directory
     if fs.exists("master_brain_backup.lua") then
         return "master_brain_backup.lua"
     end
@@ -133,7 +128,7 @@ if masterPath then
 else 
     print("ERROR: master_brain.lua not found!")
     print("Please run cluster_installer.lua to install the system.")
-    print("Searched locations: master_brain_local.lua, master_brain.lua, master_brain_backup.lua, disk locations")
+    print("Searched locations: master_brain.lua, master_brain_backup.lua, disk locations")
 end
 ]]
 
@@ -285,22 +280,19 @@ return M
 
 print("Installing enhanced master...")
 
--- Copy the enhanced master_brain.lua from current directory to multiple locations
+-- Copy the enhanced master_brain.lua to the same location as startup (current directory)
 if fs.exists("master_brain.lua") then
-    -- Copy to master disk if available
+    -- master_brain.lua is already in the current directory where startup.lua will be installed
+    -- This is the correct location for auto-startup after reboot
+    print("  + Enhanced master_brain.lua already in startup directory")
+    
+    -- Copy to master disk if available (backup location)
     if myDrive then
         fs.copy("master_brain.lua", myDrive.."/master_brain.lua")
         print("  + Enhanced master_brain.lua copied to " .. myDrive)
     end
     
-    -- CRITICAL: Copy to local computer directory for auto-startup after reboot
-    -- This ensures the master_brain.lua is available on the installer's computer
-    if not fs.exists("master_brain_local.lua") then
-        fs.copy("master_brain.lua", "master_brain_local.lua")
-        print("  + Enhanced master_brain.lua installed to local computer")
-    end
-    
-    -- Create backup copy
+    -- Create backup copy in current directory
     if not fs.exists("master_brain_backup.lua") then
         fs.copy("master_brain.lua", "master_brain_backup.lua")
         print("  + Enhanced master_brain.lua backup created")
