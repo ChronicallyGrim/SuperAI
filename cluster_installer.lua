@@ -99,12 +99,7 @@ local function findMasterBrain()
         return "master_brain.lua" 
     end
     
-    -- Try backup location in current directory
-    if fs.exists("master_brain_backup.lua") then
-        return "master_brain_backup.lua"
-    end
-    
-    -- Try disk locations
+    -- Try disk locations (backup removed to save space)
     local p = disk.getMountPath("back")
     if p and fs.exists(p.."/master_brain.lua") then 
         return p.."/master_brain.lua" 
@@ -124,11 +119,12 @@ print("=== MODUS Enhanced Auto-Startup ===")
 local masterPath = findMasterBrain()
 if masterPath then 
     print("Starting enhanced master_brain from: " .. masterPath)
+    print("Auto-startup enabled - will run on every reboot")
     shell.run(masterPath)
 else 
     print("ERROR: master_brain.lua not found!")
     print("Please run cluster_installer.lua to install the system.")
-    print("Searched locations: master_brain.lua, master_brain_backup.lua, disk locations")
+    print("Searched locations: master_brain.lua, disk locations")
 end
 ]]
 
@@ -306,11 +302,9 @@ if myDrive then
     print("  + Enhanced master_brain.lua copied to " .. myDrive)
 end
 
--- Create backup copy in current directory
-if not fs.exists("master_brain_backup.lua") then
-    fs.copy("master_brain.lua", "master_brain_backup.lua")
-    print("  + Enhanced master_brain.lua backup created")
-end
+-- Skip creating backup copy to save space
+-- User reported space is precious, removed redundancy backup
+print("  + Backup creation skipped (space optimization)")
 
 print("  + Enhanced master_brain.lua fully installed")
 
