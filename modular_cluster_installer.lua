@@ -163,28 +163,28 @@ local discoveryStart = os.clock()
 print("Listening for worker responses for 20 seconds...")
 
 while true do
-    local event, id, senderID, message, protocol = os.pullEvent()
+    local event, id, message, protocol = os.pullEvent()
     
     if event == "timer" and id == timeout then
         print("Discovery timeout reached after " .. math.floor(os.clock() - discoveryStart) .. " seconds")
         break
     elseif event == "rednet_message" then
-        print("Received message from " .. (senderID or "unknown") .. " on protocol " .. (protocol or "none"))
+        print("Received message from " .. (id or "unknown") .. " on protocol " .. (protocol or "none"))
         
         if protocol == PROTOCOL and message and message.type == "worker_available" then
             local found = false
             for _, worker in ipairs(workerComputers) do
-                if worker.id == senderID then
+                if worker.id == id then
                     found = true
                     break
                 end
             end
             if not found then
-                table.insert(workerComputers, {id = senderID, network = true, connected = false})
-                print("  Ready worker found: ID " .. senderID)
+                table.insert(workerComputers, {id = id, network = true, connected = false})
+                print("  Ready worker found: ID " .. id)
                 pingResponses = pingResponses + 1
             else
-                print("  Duplicate response from worker " .. senderID .. " (ignored)")
+                print("  Duplicate response from worker " .. id .. " (ignored)")
             end
         else
             print("  Message not a worker_available response (type: " .. (message and message.type or "nil") .. ")")
@@ -607,7 +607,7 @@ for i, role in ipairs(WORKER_ROLES) do
         print("  Waiting for installation completion...")
         
         while not installComplete do
-            local event, id, senderID, message, protocol = os.pullEvent()
+            local event, id, message, protocol = os.pullEvent()
             
             if event == "timer" and id == timeout then
                 print("  TIMEOUT: Installation did not complete after " .. math.floor(os.clock() - startTime) .. " seconds")
@@ -615,9 +615,9 @@ for i, role in ipairs(WORKER_ROLES) do
                 installResults[role.name] = {success = false, reason = "timeout"}
                 break
             elseif event == "rednet_message" then
-                print("  Received message from " .. (senderID or "unknown") .. " on protocol " .. (protocol or "none"))
+                print("  Received message from " .. (id or "unknown") .. " on protocol " .. (protocol or "none"))
                 
-                if protocol == PROTOCOL and senderID == targetWorker.id then
+                if protocol == PROTOCOL and id == targetWorker.id then
                     if message and message.type == "install_complete" and message.role == role.name then
                         print("  SUCCESS: Installation completed after " .. math.floor(os.clock() - startTime) .. " seconds")
                         installResults[role.name] = {success = true, worker = targetWorker.id}
