@@ -280,28 +280,39 @@ return M
 
 print("Installing enhanced master...")
 
--- Copy the enhanced master_brain.lua to the same location as startup (current directory)
-if fs.exists("master_brain.lua") then
-    -- master_brain.lua is already in the current directory where startup.lua will be installed
-    -- This is the correct location for auto-startup after reboot
-    print("  + Enhanced master_brain.lua already in startup directory")
-    
-    -- Copy to master disk if available (backup location)
-    if myDrive then
-        fs.copy("master_brain.lua", myDrive.."/master_brain.lua")
-        print("  + Enhanced master_brain.lua copied to " .. myDrive)
+-- Download master_brain.lua from GitHub if it doesn't exist
+if not fs.exists("master_brain.lua") then
+    write("  Downloading master_brain.lua... ")
+    local r = http.get(GITHUB .. "master_brain.lua")
+    if r then
+        local f = fs.open("master_brain.lua", "w")
+        f.write(r.readAll())
+        f.close()
+        r.close()
+        print("OK")
+    else
+        print("FAILED")
+        print("  ERROR: Could not download master_brain.lua from GitHub!")
+        return
     end
-    
-    -- Create backup copy in current directory
-    if not fs.exists("master_brain_backup.lua") then
-        fs.copy("master_brain.lua", "master_brain_backup.lua")
-        print("  + Enhanced master_brain.lua backup created")
-    end
-    
-    print("  + Enhanced master_brain.lua fully installed")
-else
-    print("  ERROR: master_brain.lua not found! Please ensure it's in the same directory.")
 end
+
+-- Now master_brain.lua exists in current directory (same as startup.lua)
+print("  + Enhanced master_brain.lua installed in startup directory")
+
+-- Copy to master disk if available (backup location)
+if myDrive then
+    fs.copy("master_brain.lua", myDrive.."/master_brain.lua")
+    print("  + Enhanced master_brain.lua copied to " .. myDrive)
+end
+
+-- Create backup copy in current directory
+if not fs.exists("master_brain_backup.lua") then
+    fs.copy("master_brain.lua", "master_brain_backup.lua")
+    print("  + Enhanced master_brain.lua backup created")
+end
+
+print("  + Enhanced master_brain.lua fully installed")
 
 -- Install startup scripts with auto-run functionality
 local f = fs.open("startup.lua", "w") f.write(MASTER_STARTUP) f.close()
