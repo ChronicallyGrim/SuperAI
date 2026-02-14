@@ -94,7 +94,12 @@ local MASTER_STARTUP = [[
 -- This runs automatically after reboot on the advanced computer
 
 local function findMasterBrain()
-    -- Try local directory first
+    -- Try local computer installation first (primary location after installer runs)
+    if fs.exists("master_brain_local.lua") then 
+        return "master_brain_local.lua" 
+    end
+    
+    -- Try original master_brain.lua in current directory
     if fs.exists("master_brain.lua") then 
         return "master_brain.lua" 
     end
@@ -128,6 +133,7 @@ if masterPath then
 else 
     print("ERROR: master_brain.lua not found!")
     print("Please run cluster_installer.lua to install the system.")
+    print("Searched locations: master_brain_local.lua, master_brain.lua, master_brain_backup.lua, disk locations")
 end
 ]]
 
@@ -279,19 +285,28 @@ return M
 
 print("Installing enhanced master...")
 
--- Copy the enhanced master_brain.lua from current directory to the master disk
+-- Copy the enhanced master_brain.lua from current directory to multiple locations
 if fs.exists("master_brain.lua") then
+    -- Copy to master disk if available
     if myDrive then
         fs.copy("master_brain.lua", myDrive.."/master_brain.lua")
         print("  + Enhanced master_brain.lua copied to " .. myDrive)
     end
     
-    -- Also copy to local directory for auto-startup
-    if fs.exists("master_brain.lua") and not fs.exists("master_brain_backup.lua") then
-        fs.copy("master_brain.lua", "master_brain_backup.lua")
+    -- CRITICAL: Copy to local computer directory for auto-startup after reboot
+    -- This ensures the master_brain.lua is available on the installer's computer
+    if not fs.exists("master_brain_local.lua") then
+        fs.copy("master_brain.lua", "master_brain_local.lua")
+        print("  + Enhanced master_brain.lua installed to local computer")
     end
     
-    print("  + Enhanced master_brain.lua installed")
+    -- Create backup copy
+    if not fs.exists("master_brain_backup.lua") then
+        fs.copy("master_brain.lua", "master_brain_backup.lua")
+        print("  + Enhanced master_brain.lua backup created")
+    end
+    
+    print("  + Enhanced master_brain.lua fully installed")
 else
     print("  ERROR: master_brain.lua not found! Please ensure it's in the same directory.")
 end
