@@ -831,9 +831,10 @@ function M.run()
             end
             
         elseif input == "settings" then
+            -- Reset settings to trigger setup without forcing white color
             settings.userName = "User"
             settings.botName = "MODUS"
-            settings.chatColor = colors.white
+            settings.chatColor = nil  -- Force re-prompt for color choice
             firstRunSetup()
             user = settings.userName
             BOT_NAME = settings.botName
