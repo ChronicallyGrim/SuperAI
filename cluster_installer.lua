@@ -10,12 +10,10 @@ print("")
 local myDrive = disk.getMountPath("back")
 print("Master disk: " .. (myDrive or "NONE"))
 
--- Find worker drives and computers
--- IMPORTANT: Only include drives that will be used by worker computers, 
--- NOT drives connected to this master computer!
+-- Find all drives and computers
+local allDrives = {}
 local workerDrives = {}
 local workerComputers = {}
-local masterConnectedDrives = {}  -- Drives connected to master (don't use for workers)
 
 local myID = os.getComputerID()
 for _, name in ipairs(peripheral.getNames()) do
@@ -23,9 +21,8 @@ for _, name in ipairs(peripheral.getNames()) do
     if pType == "drive" and name ~= "back" then
         local path = disk.getMountPath(name)
         if path then
-            -- This drive is connected to the master - don't put worker files on it!
-            table.insert(masterConnectedDrives, {name = name, path = path})
-            print("  Master-connected drive: " .. name .. " -> " .. path)
+            table.insert(allDrives, {name = name, path = path})
+            print("  Found drive: " .. name .. " -> " .. path)
         end
     elseif pType == "computer" then
         local cid = peripheral.call(name, "getID")
@@ -35,21 +32,19 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
--- Drive assignment logic:
--- Only disk3 and local storage are master drives
--- All drives connected to master computer stay as master drives (no worker files)
--- Worker drives exist on separate worker computers, not on the master
-print("Drive assignment:")
+-- Drive assignment logic by NAME:
+-- disk3 + local storage = master drives  
+-- disk, disk2, disk4, disk5 = worker drives
+print("Drive assignment by name:")
 print("  disk3 and local storage = master drives")  
-print("  All drives connected to master = master drives (no worker files)")
-print("  Worker drives exist only on separate worker computers")
+print("  disk, disk2, disk4, disk5 = worker drives")
 
-for i, drive in ipairs(masterConnectedDrives) do
-    -- ALL drives connected to master are master drives - never assign as worker drives
-    if drive.path == "disk3" then
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive (disk3)")
+for _, drive in ipairs(allDrives) do
+    if drive.path == "disk" or drive.path == "disk2" or drive.path == "disk4" or drive.path == "disk5" then
+        table.insert(workerDrives, drive)
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> worker drive")
     else
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive (connected to master)")
+        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive")
     end
 end
 
@@ -457,9 +452,9 @@ if myDrive then
 end
 print("  + startup.lua with auto-run")
 
--- Install master startup on any drives connected to master that are NOT worker drives
-print("\nConfiguring drives connected to master...")
-for _, drive in ipairs(masterConnectedDrives) do
+-- Install startup scripts on all drives based on their assigned role
+print("\nConfiguring drives by assignment...")
+for _, drive in ipairs(allDrives) do
     local isWorkerDrive = false
     for _, workerDrive in ipairs(workerDrives) do
         if drive.name == workerDrive.name then
@@ -469,19 +464,22 @@ for _, drive in ipairs(masterConnectedDrives) do
     end
     
     if not isWorkerDrive then
-        -- This drive stays with master - give it master startup
+        -- This is a master drive - give it master startup
         f = fs.open(drive.path.."/startup.lua", "w") 
         f.write(MASTER_STARTUP) 
         f.close()
+        -- Also copy master_brain.lua so it can run
+        if fs.exists("master_brain.lua") then
+            fs.copy("master_brain.lua", drive.path.."/master_brain.lua")
+        end
         print("  " .. drive.path .. ": master startup installed")
     end
 end
 
--- No worker drives to install on master computer
--- Worker computers will have their own drives that get configured when they boot up
+-- Install worker files on drives assigned as worker drives
 print("\nWorker drive installation:")
 if #workerDrives == 0 then
-    print("  No worker drives on master computer (correct - worker drives exist on worker computers)")
+    print("  No worker drives found (disk, disk2, disk4, disk5 not present)")
 else
     print("  Installing worker files on " .. #workerDrives .. " drives...")
     for i, drv in ipairs(workerDrives) do
