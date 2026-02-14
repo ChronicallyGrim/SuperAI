@@ -423,4 +423,65 @@ function M.getStats()
     }
 end
 
+-- ============================================================================
+-- MASTER_BRAIN.LUA INTERFACE FUNCTIONS  
+-- ============================================================================
+
+-- Train from feedback using network and conversations (expected by master_brain.lua)
+function M.trainFromFeedback(network, conversations)
+    if not network or not conversations then
+        return false
+    end
+    
+    -- Extract training data from conversations
+    local training_data = {}
+    
+    for _, conversation in ipairs(conversations) do
+        if conversation.message and conversation.response then
+            -- Create simple embeddings for the conversation
+            local embedding = {}
+            local message_lower = conversation.message:lower()
+            
+            -- Simple feature extraction
+            for i = 1, 20 do
+                embedding[i] = 0
+            end
+            
+            -- Basic text features
+            embedding[1] = #conversation.message / 100  -- message length
+            embedding[2] = #conversation.response / 100  -- response length
+            embedding[3] = message_lower:find("?") and 1 or 0  -- question
+            embedding[4] = message_lower:find("!") and 1 or 0  -- exclamation
+            embedding[5] = message_lower:find("thank") and 1 or 0  -- gratitude
+            embedding[6] = message_lower:find("good") and 1 or 0  -- positive
+            embedding[7] = message_lower:find("bad") and 1 or 0  -- negative
+            embedding[8] = math.random()  -- randomness factor
+            
+            -- Fill remaining with random values for now
+            for i = 9, 20 do
+                embedding[i] = math.random() * 0.1
+            end
+            
+            -- Assume neutral rating for automatic training
+            local rating = 0.5
+            if conversation.sentiment then
+                if conversation.sentiment > 0.3 then
+                    rating = 0.8
+                elseif conversation.sentiment < -0.3 then
+                    rating = 0.2
+                end
+            end
+            
+            M.recordFeedback(conversation.message, conversation.response, rating, embedding)
+        end
+    end
+    
+    -- Train the reward model
+    if #M.feedback_history > 10 then
+        M.trainRewardModel(50)  -- 50 epochs
+    end
+    
+    return true
+end
+
 return M

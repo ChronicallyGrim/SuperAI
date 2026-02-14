@@ -273,4 +273,75 @@ function M.load(filename)
     return false
 end
 
+-- ============================================================================
+-- MASTER_BRAIN.LUA INTERFACE FUNCTIONS
+-- ============================================================================
+
+-- Learn from conversation interaction (expected by master_brain.lua)
+function M.learn(message, response, intent)
+    if not message or not response then return end
+    
+    -- Learn from the interaction pattern
+    local topic = intent or "general"
+    
+    -- Extract key concepts from the message
+    local words = {}
+    for word in message:lower():gmatch("%w+") do
+        table.insert(words, word)
+    end
+    
+    -- Learn concepts from the conversation
+    for _, word in ipairs(words) do
+        if #word > 3 then  -- Only learn meaningful words
+            M.learnConcept(word, "word mentioned in conversation", topic)
+        end
+    end
+    
+    -- Learn the response pattern
+    if intent then
+        M.learnFact(intent, "typical_response", response)
+        M.learnRelationship(intent, "generates", response:sub(1, 50))  -- First 50 chars as identifier
+    end
+    
+    -- Learn from the interaction
+    M.learnFact("conversation", "last_interaction", {
+        message = message,
+        response = response,
+        intent = intent,
+        timestamp = os.time()
+    })
+    
+    return true
+end
+
+-- Auto-train the system (expected by master_brain.lua)
+function M.autoTrain(numConversations)
+    numConversations = numConversations or 100
+    
+    -- Generate training scenarios
+    local scenarios = {
+        {message = "hello", response = "Hi there! How are you?", intent = "greeting"},
+        {message = "how are you", response = "I'm doing well, thank you for asking!", intent = "question"},
+        {message = "thank you", response = "You're welcome!", intent = "gratitude"},
+        {message = "goodbye", response = "See you later!", intent = "farewell"},
+        {message = "what can you do", response = "I can chat, answer questions, and help with various tasks!", intent = "question"},
+        {message = "tell me a joke", response = "Why don't scientists trust atoms? Because they make up everything!", intent = "request"},
+        {message = "I'm feeling sad", response = "I'm sorry to hear that. Would you like to talk about it?", intent = "statement"},
+        {message = "that's great", response = "I'm glad to hear that!", intent = "statement"},
+        {message = "help me", response = "Of course! What do you need help with?", intent = "request"},
+        {message = "I don't understand", response = "No problem! Let me try to explain it differently.", intent = "statement"},
+    }
+    
+    -- Train on scenarios multiple times
+    for i = 1, numConversations do
+        local scenario = scenarios[math.random(#scenarios)]
+        M.learn(scenario.message, scenario.response, scenario.intent)
+    end
+    
+    -- Save learned knowledge
+    M.save("/disk/learning_auto_train.dat")
+    
+    return true
+end
+
 return M
