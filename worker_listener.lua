@@ -37,6 +37,7 @@ local function handleDiscovery()
             
             -- Execute installer
             print("Executing installer...")
+            print("Installer script size: " .. string.len(message.script) .. " bytes")
             local success, error = pcall(function()
                 dofile(tempFile)
             end)
