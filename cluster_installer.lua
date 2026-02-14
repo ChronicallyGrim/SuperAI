@@ -35,22 +35,20 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
--- Automatically assign drives based on naming convention:
--- disk3 = master drive (gets master startup)  
--- disk, disk2, disk4, disk5 = worker drives (get worker startup)
-print("Automatically assigning drives:")
-print("  disk3 -> master drive")  
-print("  disk, disk2, disk4, disk5 -> worker drives")
+-- IMPORTANT: Master-connected drives should NEVER be worker drives!
+-- Worker drives are only drives connected to separate worker computers.
+-- All drives connected to the master computer get master startup scripts.
+print("Drive assignment:")
+print("  All drives connected to master computer -> master drives (no worker files)")  
+print("  Worker drives will be found and configured by worker computers themselves")
 
+print("Master-connected drives (will NOT get worker files):")
 for i, drive in ipairs(masterConnectedDrives) do
-    -- Check if this drive should be a worker drive
-    if drive.path == "disk" or drive.path == "disk2" or drive.path == "disk4" or drive.path == "disk5" then
-        table.insert(workerDrives, drive)
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> worker drive")
-    else
-        print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive") 
-    end
+    print("  " .. drive.name .. " (" .. drive.path .. ") -> master drive only")
 end
+
+-- No drives connected to the master should be worker drives
+-- workerDrives array should remain empty for master-connected drives
 
 print("Worker drives: " .. #workerDrives)
 print("Worker computers: " .. #workerComputers)
@@ -443,9 +441,12 @@ if myDrive then
     print("  + Enhanced master_brain.lua copied to " .. myDrive)
 end
 
--- Skip creating backup copy to save space
--- User reported space is precious, removed redundancy backup
-print("  + Backup creation skipped (space optimization)")
+-- Copy master_brain.lua to all master-connected drives so they can run it
+print("  + Copying master_brain.lua to all master-connected drives...")
+for _, drive in ipairs(masterConnectedDrives) do
+    fs.copy("master_brain.lua", drive.path.."/master_brain.lua")
+    print("    " .. drive.path .. ": master_brain.lua installed")
+end
 
 print("  + Enhanced master_brain.lua fully installed")
 
@@ -456,45 +457,41 @@ if myDrive then
 end
 print("  + startup.lua with auto-run")
 
--- Install master startup on any drives connected to master that are NOT worker drives
+-- Install master startup on ALL drives connected to master (they're never worker drives)
 print("\nConfiguring drives connected to master...")
 for _, drive in ipairs(masterConnectedDrives) do
-    local isWorkerDrive = false
-    for _, workerDrive in ipairs(workerDrives) do
-        if drive.name == workerDrive.name then
-            isWorkerDrive = true
-            break
-        end
-    end
-    
-    if not isWorkerDrive then
-        -- This drive stays with master - give it master startup
-        f = fs.open(drive.path.."/startup.lua", "w") 
-        f.write(MASTER_STARTUP) 
-        f.close()
-        print("  " .. drive.path .. ": master startup installed")
-    end
+    -- All master-connected drives get master startup scripts ONLY
+    f = fs.open(drive.path.."/startup.lua", "w") 
+    f.write(MASTER_STARTUP) 
+    f.close()
+    print("  " .. drive.path .. ": master startup installed (will look for master_brain.lua)")
 end
 
-print("\nInstalling workers...")
-for i, drv in ipairs(workerDrives) do
-    write("  " .. drv.path .. ": ")
-    f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
-    f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
-    f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
-    f = fs.open(drv.path.."/worker_memory.lua", "w") f.write(WORKER_MEMORY) f.close()
-    f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
-    f = fs.open(drv.path.."/worker_personality.lua", "w") f.write(WORKER_PERSONALITY) f.close()
-    local c = 0
-    for _, df in ipairs(dataFiles) do
-        local src = dataLoc[df]
-        if src then
-            if fs.exists(drv.path.."/"..df) then fs.delete(drv.path.."/"..df) end
-            fs.copy(src, drv.path.."/"..df)
-            c = c + 1
+print("\nInstalling workers on separate computers...")
+if #workerDrives == 0 then
+    print("  No worker drives found connected to master computer.")
+    print("  Worker computers will need their own drives with worker files.")
+    print("  This is correct - master-connected drives should only have master files!")
+else
+    for i, drv in ipairs(workerDrives) do
+        write("  " .. drv.path .. ": ")
+        f = fs.open(drv.path.."/startup.lua", "w") f.write(WORKER_STARTUP) f.close()
+        f = fs.open(drv.path.."/worker_main.lua", "w") f.write(WORKER_MAIN) f.close()
+        f = fs.open(drv.path.."/worker_language.lua", "w") f.write(WORKER_LANGUAGE) f.close()
+        f = fs.open(drv.path.."/worker_memory.lua", "w") f.write(WORKER_MEMORY) f.close()
+        f = fs.open(drv.path.."/worker_response.lua", "w") f.write(WORKER_RESPONSE) f.close()
+        f = fs.open(drv.path.."/worker_personality.lua", "w") f.write(WORKER_PERSONALITY) f.close()
+        local c = 0
+        for _, df in ipairs(dataFiles) do
+            local src = dataLoc[df]
+            if src then
+                if fs.exists(drv.path.."/"..df) then fs.delete(drv.path.."/"..df) end
+                fs.copy(src, drv.path.."/"..df)
+                c = c + 1
+            end
         end
+        print(c .. " data files")
     end
-    print(c .. " data files")
 end
 
 print("\nRebooting...")
