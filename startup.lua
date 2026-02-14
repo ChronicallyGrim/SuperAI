@@ -1,94 +1,36 @@
--- startup.lua
--- Auto-starts SuperAI from computer root on boot
+-- Auto-startup for enhanced master_brain.lua
+-- This runs automatically after reboot on the advanced computer
 
-print("SuperAI Auto-Startup")
-print("")
-
--- ============================================================================
--- HELPER: Convert peripheral name to mount path
--- ============================================================================
-local function getMountPath(peripheral_name)
-    if not peripheral_name then return nil end
-    if not peripheral.isPresent(peripheral_name) then return nil end
-    return disk.getMountPath(peripheral_name)
-end
-
--- ============================================================================
--- LOAD DRIVE CONFIGURATION
--- ============================================================================
-local config = nil
-local config_found = false
-local top_mount = nil  -- Will hold the mount path for TOP drive
-
--- Try to load from computer root first (installer puts it there)
-if fs.exists("drive_config.lua") then
-    config = require("drive_config")
-    config_found = true
-else
-    -- Try to find it on a peripheral drive
-    local sides = {"top", "bottom", "left", "right", "front", "back"}
-    for _, side in ipairs(sides) do
-        local mount_path = getMountPath(side)
-        if mount_path and fs.exists(mount_path .. "/drive_config.lua") then
-            package.path = mount_path .. "/?.lua;" .. package.path
-            config = require("drive_config")
-            config_found = true
-            break
+local function findMasterBrain()
+    -- Try master_brain.lua in current directory first (primary location - same as startup)
+    if fs.exists("master_brain.lua") then 
+        return "master_brain.lua" 
+    end
+    
+    -- Try disk locations (backup removed to save space)
+    local p = disk.getMountPath("back")
+    if p and fs.exists(p.."/master_brain.lua") then 
+        return p.."/master_brain.lua" 
+    end
+    
+    for i = 1, 10 do
+        local try = "disk" .. (i > 1 and i or "")
+        if fs.exists(try.."/master_brain.lua") then 
+            return try.."/master_brain.lua" 
         end
     end
-end
-
-if not config_found or not config or not config.top then
-    print("WARNING: Could not load drive configuration!")
-    print("SuperAI will run with limited functionality.")
-    print("")
-else
-    -- Get the MOUNT PATH for the TOP drive (not peripheral name!)
-    top_mount = getMountPath(config.top)
     
-    if not top_mount then
-        print("WARNING: TOP drive '" .. config.top .. "' not found!")
-        print("RAM/RAID features may not work properly.")
-        print("")
-    else
-        print("TOP drive found: " .. config.top .. " -> " .. top_mount)
-        -- Add TOP drive's MOUNT PATH to package path
-        package.path = top_mount .. "/?.lua;" .. package.path
-    end
+    return nil
 end
 
--- ============================================================================
--- CHECK FOR MAIN_LOGIC
--- ============================================================================
-
--- main_logic.lua should be on the TOP drive, not computer root
-local main_logic_path = nil
-
--- First check TOP drive
-if top_mount and fs.exists(top_mount .. "/main_logic.lua") then
-    main_logic_path = top_mount .. "/main_logic.lua"
-    print("Loading main_logic from: " .. main_logic_path)
--- Fallback: check computer root
-elseif fs.exists("main_logic.lua") then
-    main_logic_path = "main_logic.lua"
-    print("Loading main_logic from computer root")
-else
-    print("ERROR: main_logic.lua not found!")
-    if top_mount then
-        print("Checked: " .. top_mount .. "/main_logic.lua")
-    end
-    print("Checked: computer root")
-    print("Run NewInstaller2 to install SuperAI.")
-    return
+print("=== MODUS Enhanced Auto-Startup ===")
+local masterPath = findMasterBrain()
+if masterPath then 
+    print("Starting enhanced master_brain from: " .. masterPath)
+    print("Auto-startup enabled - will run on every reboot")
+    shell.run(masterPath)
+else 
+    print("ERROR: master_brain.lua not found!")
+    print("Please run cluster_installer.lua to install the system.")
+    print("Searched locations: master_brain.lua, disk locations")
 end
-
--- ============================================================================
--- LAUNCH SUPERAI
--- ============================================================================
-print("Starting SuperAI...")
-print("")
-
--- main_logic is a MODULE that returns M with M.run()
--- We need to require it and call run(), not shell.run() it
-local main_logic = require("main_logic")
-main_logic.run()
