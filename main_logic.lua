@@ -1549,12 +1549,18 @@ The mega train option generates 10,000 conversations automatically!]]
             end
         elseif choice == "7" then
             -- Exponential Quick
-            local expTrainer = require("exponential_trainer")
+            local success, expTrainer = pcall(require, "exponential_trainer")
+            if not success then
+                return "Error: exponential_trainer module not found. Please check your installation."
+            end
             expTrainer.train(1000, 4)
             return "Exponential training complete! Run again to grow even smarter!"
         elseif choice == "8" then
             -- Exponential Standard
-            local expTrainer = require("exponential_trainer")
+            local success, expTrainer = pcall(require, "exponential_trainer")
+            if not success then
+                return "Error: exponential_trainer module not found. Please check your installation."
+            end
             expTrainer.train(10000, 5)
             return "Exponential training complete! Generation increased!"
         elseif choice == "9" then
@@ -1564,7 +1570,10 @@ The mega train option generates 10,000 conversations automatically!]]
             print("Each run makes me smarter than before!")
             write("Continue? (y/n): ")
             if read():lower() == "y" then
-                local expTrainer = require("exponential_trainer")
+                local success, expTrainer = pcall(require, "exponential_trainer")
+                if not success then
+                    return "Error: exponential_trainer module not found. Please check your installation."
+                end
                 expTrainer.train(50000, 6)
                 return "Deep exponential training complete! My intelligence has grown significantly!"
             else
@@ -1577,7 +1586,10 @@ The mega train option generates 10,000 conversations automatically!]]
             print("This will take 2-3 hours but will make me MUCH smarter!")
             write("Type YES to confirm: ")
             if read():upper() == "YES" then
-                local expTrainer = require("exponential_trainer")
+                local success, expTrainer = pcall(require, "exponential_trainer")
+                if not success then
+                    return "Error: exponential_trainer module not found. Please check your installation."
+                end
                 expTrainer.train(100000, 7)
                 return "MASSIVE exponential training complete! My intelligence has grown exponentially!"
             else
@@ -1589,12 +1601,18 @@ The mega train option generates 10,000 conversations automatically!]]
             local num = tonumber(read()) or 5000
             write("Turns per conversation (3-10): ")
             local turns = tonumber(read()) or 5
-            local expTrainer = require("exponential_trainer")
+            local success, expTrainer = pcall(require, "exponential_trainer")
+            if not success then
+                return "Error: exponential_trainer module not found. Please check your installation."
+            end
             expTrainer.train(num, turns)
             return "Custom exponential training complete!"
         elseif choice == "12" then
             -- Stats
-            local expTrainer = require("exponential_trainer")
+            local success, expTrainer = pcall(require, "exponential_trainer")
+            if not success then
+                return "Error: exponential_trainer module not found. Please check your installation."
+            end
             expTrainer.showStats()
             return "Training stats shown above. Say 'training menu' for more options."
         elseif choice == "0" then
