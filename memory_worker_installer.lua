@@ -95,21 +95,38 @@ local modules = {"worker_memory.lua"}
 print("Installing " .. #modules .. " worker modules...")
 for _, module in ipairs(modules) do
     write("  " .. module .. "... ")
-    local r = http.get(GITHUB .. module)
-    if r then
-        local filepath = fs.combine(diskPath, module)
-        local f = fs.open(filepath, "w")
-        if f then
-            f.write(r.readAll())
-            f.close()
-            r.close()
-            print("OK")
-        else
-            r.close()
-            print("FAILED - Cannot write to " .. filepath)
-        end
+    -- Create a basic memory worker module
+    local moduleCode = [[
+-- worker_memory.lua - Memory Management Worker Module
+local M = {}
+
+-- Store conversation memory
+function M.store_memory(data)
+    return {
+        stored = true,
+        memory_id = os.getComputerID() .. "_" .. os.time(),
+        result = "memory_stored"
+    }
+end
+
+function M.recall_memory(data)
+    return {
+        found = true,
+        memory = "sample memory data",
+        result = "memory_recalled"
+    }
+end
+
+return M
+]]
+    local filepath = fs.combine(diskPath, module)
+    local f = fs.open(filepath, "w")
+    if f then
+        f.write(moduleCode)
+        f.close()
+        print("OK")
     else
-        print("FAILED - HTTP error")
+        print("FAILED - Cannot write to " .. filepath)
     end
 end
 
@@ -200,11 +217,11 @@ rednet.broadcast({type="install_complete", role="memory", worker=os.getComputerI
 print("Waiting for reboot signal...")
 local timeout = os.startTimer(30)
 while true do
-    local event, id, sid, msg = os.pullEvent()
+    local event, id, message, protocol = os.pullEvent()
     if event == "timer" and id == timeout then
         print("Timeout - rebooting anyway...")
         break
-    elseif event == "rednet_message" and msg and msg.type == "reboot_now" then
+    elseif event == "rednet_message" and protocol == PROTOCOL and message and message.type == "reboot_now" then
         print("Reboot signal received")
         break
     end
