@@ -76,7 +76,7 @@ end
 print("  Pinging for network workers...")
 rednet.broadcast({type = "discover", master_id = myID}, PROTOCOL)
 local pingResponses = 0
-local timeout = textutils.unpack({os.startTimer(3)})
+local timeout = os.startTimer(3)
 while true do
     local event, id, senderID, message, protocol = os.pullEvent()
     if event == "timer" and id == timeout then
