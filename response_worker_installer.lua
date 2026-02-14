@@ -194,8 +194,20 @@ print("")
 print("Response Worker installation complete!")
 print("Drive disk4 is ready for deployment.")
 
--- Signal completion
-print("Response Worker (ID " .. os.getComputerID() .. ") installation complete!")
-print("Restarting in 3 seconds...")
-sleep(3)
+-- Signal completion to master
+rednet.broadcast({type="install_complete", role="response", worker=os.getComputerID()}, PROTOCOL)
+
+print("Waiting for reboot signal...")
+local timeout = os.startTimer(30)
+while true do
+    local event, id, sid, msg = os.pullEvent()
+    if event == "timer" and id == timeout then
+        print("Timeout - rebooting anyway...")
+        break
+    elseif event == "rednet_message" and msg and msg.type == "reboot_now" then
+        print("Reboot signal received")
+        break
+    end
+end
+
 os.reboot()
